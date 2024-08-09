@@ -7,11 +7,11 @@ $$
 $$
 
 where:
-- \( u(x,t) \) is the velocity field.
-- \( \nu \) is the kinematic viscosity.
-- \( f(x,t) \) is the source term.
-- \( L \) is the length of the spatial domain.
-- \( T \) is the final time.
+- $\( u(x,t) \)$ is the velocity field.
+- $\( \nu \)$ is the kinematic viscosity.
+- $\( f(x,t) \)$ is the source term.
+- $\( L \)$ is the length of the spatial domain.
+- $\( T \)$ is the final time.
 
 ### Boundary and Initial Conditions
 
