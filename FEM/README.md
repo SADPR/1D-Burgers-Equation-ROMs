@@ -74,3 +74,38 @@ $$
 
 This equation must be satisfied for all test functions $v(x)$ in the appropriate function space.
 
+## Finite Element Method (FEM) Discretization
+
+Given the weak form of the 1D Burgers' equation:
+
+$$
+\int_0^L \left( \frac{\partial u}{\partial t} v + u \frac{\partial u}{\partial x} v + \nu \frac{\partial u}{\partial x} \frac{\partial v}{\partial x} - f v \right) \, dx = 0
+$$
+
+we will discretize it using the Finite Element Method.
+
+### Choice of Basis Functions
+
+First, we approximate the solution $u(x,t)$ and the test function $v(x)$ using basis functions.
+
+$$
+u(x,t) \approx \sum_{j=1}^{N} U_j(t) N_j(x)
+$$
+
+where $N_j(x)$ are the basis functions and $U_j(t)$ are the nodal values at time $t$.
+
+Similarly, the test function $v(x)$ can be written as:
+
+$$
+v(x) = N_i(x)
+$$
+
+where $N_i(x)$ is also a basis function.
+
+### Substitute Approximations into the Weak Form
+
+Substitute these approximations into the weak form:
+
+$$
+\int_0^L \left( \frac{\partial}{\partial t} \left( \sum_{j=1}^{N} U_j N_j \right) v + \left( \sum_{j=1}^{N} U_j N_j \right) \frac{\partial}{\partial x} \left( \sum_{k=1}^{N} U_k N_k \right) v + \nu \frac{\partial}{\partial x} \left( \sum_{j=1}^{N} U_j N_j \right) \frac{\partial v}{\partial x} - f v \right) \, dx = 0
+$$
