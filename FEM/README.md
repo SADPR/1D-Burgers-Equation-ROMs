@@ -138,3 +138,26 @@ $$
 \sum_{j=1}^{N} M_{ij} \frac{d U_j}{d t}
 $$
 
+#### Convection Term:
+
+$$
+\int_0^L \left( \sum_{j=1}^{N} U_j N_j \right) \frac{\partial}{\partial x} \left( \sum_{k=1}^{N} U_k N_k \right) N_i \, dx = \int_0^L \sum_{j=1}^{N} \sum_{k=1}^{N} U_j U_k N_j \frac{\partial N_k}{\partial x} N_i \, dx
+$$
+
+This can be written as:
+
+$$
+\sum_{j=1}^{N} \sum_{k=1}^{N} U_j U_k \int_0^L N_j \frac{\partial N_k}{\partial x} N_i \, dx
+$$
+
+Define the **convection matrix** $C$ as:
+
+$$
+C_{ijk} = \int_0^L N_i N_j \frac{\partial N_k}{\partial x} \, dx
+$$
+
+Thus, the convection term becomes:
+
+$$
+\sum_{j=1}^{N} \sum_{k=1}^{N} U_j U_k C_{ijk}
+$$
