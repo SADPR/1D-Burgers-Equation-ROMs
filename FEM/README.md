@@ -107,5 +107,5 @@ where $N_i(x)$ is also a basis function.
 Substitute these approximations into the weak form:
 
 $$
-\int_0^L \left( \frac{\partial}{\partial t} \left( \sum_{j=1}^{N} U_j N_j \right) v + \left( \sum_{j=1}^{N} U_j N_j \right) \frac{\partial}{\partial x} \left( \sum_{k=1}^{N} U_k N_k \right) v + \nu \frac{\partial}{\partial x} \left( \sum_{j=1}^{N} U_j N_j \right) \frac{\partial v}{\partial x} - f v \right) \, dx = 0
+\int_0^L \left( \frac{\partial}{\partial t} \left( \sum_{j=1}^{N} U_j N_j \right) v + \left( \sum_{j=1}^{N} U_j N_j \right) \frac{\partial}{\partial x} \left( \sum_{k=1}^{N} U_k N_k \right) v + \nu \frac{\partial}{\partial x} \left( \sum_{j=1}^{N} U_j N_j \right) \frac{\partial v}{\partial x} - f v \right) dx = 0
 $$
