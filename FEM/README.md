@@ -32,4 +32,4 @@ $$
 f(x,t) = 0.02 e^{\mu_2 x}
 $$
 
-where \( \mu_2 \) is a parameter that defines the spatial variation of the source term.
+where $\mu_2$ is a parameter that defines the spatial variation of the source term.
