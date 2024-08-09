@@ -161,3 +161,42 @@ Thus, the convection term becomes:
 $$
 \sum_{j=1}^{N} \sum_{k=1}^{N} U_j U_k C_{ijk}
 $$
+
+#### Contraction to Simplify the Tensor
+
+To avoid dealing with a third-order tensor, we perform a contraction by expressing the convection term as:
+
+$$
+\mathbf{U}^T \mathbf{C} \mathbf{U}
+$$
+
+Where:
+
+$$
+\mathbf{C}_{jk} = \int_0^L N_j \frac{\partial N_k}{\partial x} N_i \, dx
+$$
+
+#### Diffusion Term:
+
+$$
+\int_0^L \nu \frac{\partial}{\partial x} \left( \sum_{j=1}^{N} U_j N_j \right) \frac{\partial N_i}{\partial x} \, dx = \int_0^L \nu \sum_{j=1}^{N} U_j \frac{\partial N_j}{\partial x} \frac{\partial N_i}{\partial x} \, dx
+$$
+
+This can be written as:
+
+$$
+\nu \sum_{j=1}^{N} U_j \int_0^L \frac{\partial N_j}{\partial x} \frac{\partial N_i}{\partial x} \, dx
+$$
+
+Define the **diffusion matrix** $K$ as:
+
+$$
+K_{ij} = \int_0^L \nu \frac{\partial N_i}{\partial x} \frac{\partial N_j}{\partial x} \, dx
+$$
+
+Thus, the diffusion term becomes:
+
+$$
+\nu \sum_{j=1}^{N} K_{ij} U_j
+$$
+
