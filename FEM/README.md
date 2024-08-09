@@ -252,3 +252,23 @@ The convection matrix $C(U)$ is formed by multiplying the precomputed integral m
 $$
 (C(U))_{ij} = \sum_{k=1}^{N} U_k C_{ijk} = U_j \sum_{k=1}^{N} U_k C_{ijk}
 $$
+
+- **Combine with the Solution:**
+
+The convection matrix is then contracted with the current solution \( U \):
+
+$$
+\sum_{k=1}^{N} U_k C_{ijk} = (C(U))_{ij}
+$$
+
+Here, the contraction \( \sum_{k=1}^{N} U_k C_{ijk} \) simplifies the expression by summing over the index \( k \), effectively reducing the third-order tensor to a second-order tensor (a matrix).
+
+### Final Convection Matrix
+
+The final convection matrix used in the finite element method is thus:
+
+$$
+C(U)_{ij} = \sum_{k=1}^{N} U_k \int_0^L N_j(x) \frac{\partial N_k(x)}{\partial x} \, dx
+$$
+
+This simplifies the handling of the convection term and avoids directly dealing with higher-order tensors.
