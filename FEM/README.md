@@ -109,3 +109,32 @@ Substitute these approximations into the weak form:
 $$
 \int_0^L \left( \frac{\partial}{\partial t} \left( \sum_{j=1}^{N} U_j N_j \right) v + \left( \sum_{j=1}^{N} U_j N_j \right) \frac{\partial}{\partial x} \left( \sum_{k=1}^{N} U_k N_k \right) v + \nu \frac{\partial}{\partial x} \left( \sum_{j=1}^{N} U_j N_j \right) \frac{\partial v}{\partial x} - f v \right) dx = 0
 $$
+
+### Expand and Simplify
+
+Now expand and simplify each term:
+
+#### Time Derivative Term:
+
+$$
+\int_0^L \frac{\partial}{\partial t} \left( \sum_{j=1}^{N} U_j N_j \right) N_i \, dx = \int_0^L \sum_{j=1}^{N} \frac{d U_j}{d t} N_j N_i \, dx
+$$
+
+This can be written as:
+
+$$
+\sum_{j=1}^{N} \frac{d U_j}{d t} \int_0^L N_j N_i \, dx
+$$
+
+Define the **mass matrix** $M$ as:
+
+$$
+M_{ij} = \int_0^L N_i N_j \, dx
+$$
+
+Thus, the time derivative term becomes:
+
+$$
+\sum_{j=1}^{N} M_{ij} \frac{d U_j}{d t}
+$$
+
