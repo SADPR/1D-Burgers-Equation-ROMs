@@ -206,7 +206,7 @@ $$
 \int_0^L f N_i \, dx
 $$
 
-Define the **load vector** \( F \) as:
+Define the **load vector** $F$ as:
 
 $$
 F_i = \int_0^L f N_i \, dx
@@ -220,7 +220,7 @@ $$
 \sum_{j=1}^{N} M_{ij} \frac{d U_j}{d t} + \mathbf{U}^T \mathbf{C} \mathbf{U} + \nu \sum_{j=1}^{N} K_{ij} U_j = F_i
 $$
 
-This leads to the following system of equations for each basis function \( N_i \):
+This leads to the following system of equations for each basis function $N_i$:
 
 $$
 \mathbf{M} \frac{d \mathbf{U}}{dt} + \mathbf{C}(\mathbf{U}) \mathbf{U} + \mathbf{K} \mathbf{U} = \mathbf{F}
@@ -228,10 +228,10 @@ $$
 
 where:
 
-- \( \mathbf{M} \) is the mass matrix.
-- \( \mathbf{C}(\mathbf{U}) \) is the convection matrix, which depends on the solution \( \mathbf{U} \).
-- \( \mathbf{K} \) is the diffusion matrix.
-- \( \mathbf{F} \) is the load vector.
+- $\mathbf{M}$ is the mass matrix.
+- $\mathbf{C}(\mathbf{U})$ is the convection matrix, which depends on the solution $\mathbf{U}$.
+- $\mathbf{K}$ is the diffusion matrix.
+- $\mathbf{F}$ is the load vector.
 
 #### Contraction to Simplify the Tensor
 
@@ -243,11 +243,11 @@ $$
 C_{ij} = \int_0^L N_i(x) \frac{\partial N_j(x)}{\partial x} \, dx
 $$
 
-This matrix \( C_{ij} \) captures the interaction between shape functions and their derivatives over the domain.
+This matrix $C_{ij}$ captures the interaction between shape functions and their derivatives over the domain.
 
 2. **Form the Convection Matrix:**
 
-The convection matrix \( C(U) \) is formed by multiplying the precomputed integral matrix \( C_{ij} \) with the current solution vector \( U \):
+The convection matrix $C(U)$ is formed by multiplying the precomputed integral matrix $C_{ij}$ with the current solution vector $U$:
 
 $$
 (C(U))_{ij} = \sum_{k=1}^{N} U_k C_{ijk} = U_j \sum_{k=1}^{N} U_k C_{ijk}
