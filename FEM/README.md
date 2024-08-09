@@ -7,11 +7,11 @@ $$
 $$
 
 where:
-- $\( u(x,t) \)$ is the velocity field.
-- $\( \nu \)$ is the kinematic viscosity.
-- $\( f(x,t) \)$ is the source term.
-- $\( L \)$ is the length of the spatial domain.
-- $\( T \)$ is the final time.
+- $u(x,t)$ is the velocity field.
+- $\nu$ is the kinematic viscosity.
+- $f(x,t)$ is the source term.
+- $L$ is the length of the spatial domain.
+- $T$ is the final time.
 
 ### Boundary and Initial Conditions
 
@@ -26,7 +26,7 @@ $$
 
 ### Source Term
 
-In the specific case we are considering, the source term \( f(x,t) \) is given by:
+In the specific case we are considering, the source term $f(x,t)$ is given by:
 
 $$
 f(x,t) = 0.02 e^{\mu_2 x}
