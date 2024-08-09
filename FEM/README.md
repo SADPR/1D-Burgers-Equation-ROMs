@@ -268,7 +268,7 @@ Here, the contraction \( \sum_{k=1}^{N} U_k C_{ijk} \) simplifies the expression
 The final convection matrix used in the finite element method is thus:
 
 $$
-C(U)_{ij} = \sum_{k=1}^{N} U_k \int_0^L N_j(x) \frac{\partial N_k(x)}{\partial x} \, dx
+C(U){ij} = \sum_{k=1}^{N} U_k \int_0^L N_j(x) \frac{\partial N_k(x)}{\partial x} \, dx
 $$
 
 This simplifies the handling of the convection term and avoids directly dealing with higher-order tensors.
