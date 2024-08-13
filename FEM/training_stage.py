@@ -46,6 +46,10 @@ corners = np.array([
 # Combine the LHS samples with the corners
 all_samples = np.vstack([lhs_samples, corners])
 
+# Create directories for saving the training data and gifs
+os.makedirs("../new_training_data", exist_ok=True)
+os.makedirs("../new_training_gifs", exist_ok=True)
+
 # Save the parameter combinations
 np.save("../new_training_data/parameter_combinations.npy", all_samples)
 
