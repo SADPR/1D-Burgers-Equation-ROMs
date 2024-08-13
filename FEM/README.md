@@ -102,43 +102,47 @@ $$
 
 This can be rewritten in matrix form:
 
-- **Mass Matrix $M$:**
+- **Mass Matrix $\mathbf{M}$:**
 
 $$
-M_{ij} = \int_0^L N_i(x) N_j(x) \, dx
+\mathbf{M}_{ij} = \int_0^L N_i(x) N_j(x) \, dx
 $$
 
-- **Convection Term $C(U)$:**
+- **Convection Term $\mathbf{C}(\mathbf{U})$:**
 
 $$
-C_{ij}(U) = \sum_{k=1}^{E} U_k(t) \int_0^L N_k(x) \frac{\partial N_j(x)}{\partial x} N_i(x) \, dx
+\mathbf{C}_{ij}(\mathbf{U}) = \sum_{k=1}^{E} U_k(t) \int_0^L N_k(x) \frac{\partial N_j(x)}{\partial x} N_i(x) \, dx
 $$
 
-- **Diffusion Matrix $K$:**
+- **Diffusion Matrix $\mathbf{K}$:**
 
 $$
-K_{ij} = \nu \int_0^L \frac{\partial N_i(x)}{\partial x} \frac{\partial N_j(x)}{\partial x} \, dx
+\mathbf{K}_{ij} = \nu \int_0^L \frac{\partial N_i(x)}{\partial x} \frac{\partial N_j(x)}{\partial x} \, dx
 $$
 
-- **Load Vector $F$:**
+- **Load Vector $\mathbf{F}$:**
 
 $$
-F_i(t) = \int_0^L f(x,t) N_i(x) \, dx
+\mathbf{F}_i(t) = \int_0^L f(x,t) N_i(x) \, dx
 $$
 
 ### 5. Discretized System of Equations
 
 The overall system of equations is:
 
-**M** $\frac{\textbf{U}^{n+1} - \textbf{U}^n}{\Delta t}$ + **C**($\textbf{U}^{n+1}$) $\textbf{U}^{n+1}$ + **K** $\textbf{U}^{n+1}$ = **F**($t^{n+1}$)
+$$
+\mathbf{M} \frac{d\mathbf{U}(t)}{dt} + \mathbf{C}(\mathbf{U})\mathbf{U} + \mathbf{K} \mathbf{U} = \mathbf{F}(t)
+$$
 
 where:
-- **U**($t$) is the vector of unknowns at the nodes.
+- $\mathbf{U}(t)$ is the vector of unknowns at the nodes.
 
 ### 6. Time Discretization
 
 To solve this system over time, you apply a time discretization method such as the implicit Euler scheme:
 
-**M** $\frac{\textbf{U}^{n+1} - \textbf{U}^n}{\Delta t}$ + **C**($\textbf{U}^{n+1}$) $\textbf{U}^{n+1}$ + **K** $\textbf{U}^{n+1}$ = **F**($t^{n+1}$)
+$$
+\mathbf{M} \frac{\mathbf{U}^{n+1} - \mathbf{U}^n}{\Delta t} + \mathbf{C}(\mathbf{U}^{n+1}) \mathbf{U}^{n+1} + \mathbf{K} \mathbf{U}^{n+1} = \mathbf{F}^{n+1}
+$$
 
 This forms a nonlinear system at each time step, which can be solved iteratively.
