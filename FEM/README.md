@@ -111,7 +111,7 @@ $$
 - **Convection Term $\mathbf{C}(\mathbf{U})$:**
 
 $$
-\mathbf{C}_{ij}(\mathbf{U}) = \sum_{k=1}^{E} U_k(t) \int_0^L N_k(x) \frac{\partial N_j(x)}{\partial x} N_i(x)  dx
+C_{ij}(U) = \sum_{k=1}^{E} U_k(t) \int_0^L N_k(x) \frac{\partial N_j(x)}{\partial x} N_i(x) dx
 $$
 
 - **Diffusion Matrix $\mathbf{K}$:**
