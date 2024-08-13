@@ -5,7 +5,7 @@
 In FEM, the mass matrix $\mathbf{M}$ is defined as:
 
 $$
-\mathbf{M}_{ij} = \int_0 N_i(x) N_j(x) dx
+\mathbf{M}_{ij} = \int_\Omega N_i(x) N_j(x) dx
 $$
 
 where:
