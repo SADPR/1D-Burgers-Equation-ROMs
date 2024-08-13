@@ -5,7 +5,7 @@
 In FEM, the mass matrix $\mathbf{M}$ is defined as:
 
 $$
-\mathbf{M}_{ij} = \int_{\Omega} N_i(x) N_j(x) \, dx
+\mathbf{M}_{ij} = \int_{\Omega} N_i(x) N_j(x) dx
 $$
 
 where:
@@ -25,7 +25,7 @@ Here, $\xi \in [-1, 1]$ is the coordinate in the reference element.
 The integral over the physical element then transforms into an integral over the reference element:
 
 $$
-\mathbf{M}_{ij} = \int_{-1}^{1} N_i(\xi) N_j(\xi) \left|\frac{dx}{d\xi}\right| \, d\xi
+\mathbf{M}_{ij} = \int_{-1}^{1} N_i(\xi) N_j(\xi) \left|\frac{dx}{d\xi}\right|  d\xi
 $$
 
 where $\frac{dx}{d\xi}$ is the Jacobian of the transformation. The Jacobian represents how much the reference element is "stretched" or "compressed" to fit the physical element.
@@ -45,7 +45,7 @@ This Jacobian $J$ or its absolute value $|J|$ is used to transform the different
 Gaussian quadrature is used to approximate the integral. For an integral over the interval $[-1, 1]$, Gaussian quadrature approximates the integral as:
 
 $$
-\int_{-1}^{1} f(\xi) \, d\xi \approx \sum_{k=1}^{n_{\text{gauss}}} w_k f(\xi_k)
+\int_{-1}^{1} f(\xi)  d\xi \approx \sum_{k=1}^{n_{\text{gauss}}} w_k f(\xi_k)
 $$
 
 where:
