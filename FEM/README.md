@@ -57,7 +57,7 @@ $$
 Assuming homogeneous Dirichlet boundary conditions (i.e., $u = 0$ on $\partial \Omega$), the boundary term vanishes:
 
 $$
-\left| \nu \frac{\partial u}{\partial x} v \right|_0^L = 0
+\left. \nu \frac{\partial u}{\partial x} v \right|_0^L = 0
 $$
 
 Thus, we obtain:
