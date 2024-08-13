@@ -82,19 +82,23 @@ $$
 \frac{\partial u(x,t)}{\partial t} + u(x,t) \frac{\partial u(x,t)}{\partial x} = \nu \frac{\partial^2 u(x,t)}{\partial x^2} + f(x,t)
 $$
 
-We multiply by a test function $v(x)$ and integrate over the domain $[0, L]$:
+### Multiplying by a Test Function and Integrating Over the Domain
+
+We multiply by a test function \(v(x)\) and integrate over the domain \([0, L]\):
 
 $$
-\int_0^L \left( \frac{\partial u(x,t)}{\partial t} + u(x,t) \frac{\partial u(x,t)}{\partial x} - \nu \frac{\partial^2 u(x,t)}{\partial x^2} - f(x,t) \right) v(x)  dx = 0
+\int_0^L \left( \frac{\partial u(x,t)}{\partial t} + u(x,t) \frac{\partial u(x,t)}{\partial x} - \nu \frac{\partial^2 u(x,t)}{\partial x^2} - f(x,t) \right) v(x) \, dx = 0
 $$
 
-We handle the second-order derivative term $- \nu \frac{\partial^2 u}{\partial x^2}$ using integration by parts:
+### Applying Integration by Parts
+
+We handle the second-order derivative term \( - \nu \frac{\partial^2 u}{\partial x^2} \) using integration by parts:
 
 $$
--\nu \int_0^L \frac{\partial^2 u}{\partial x^2} v  dx = \left[ - \nu \frac{\partial u}{\partial x} v \right]_0^L + \int_0^L \nu \frac{\partial u}{\partial x} \frac{\partial v}{\partial x}  dx
+-\nu \int_0^L \frac{\partial^2 u}{\partial x^2} v \, dx = \left[ - \nu \frac{\partial u}{\partial x} v \right]_0^L + \nu \int_0^L \frac{\partial u}{\partial x} \frac{\partial v(x)}{\partial x} \, dx
 $$
 
-Assuming homogeneous Dirichlet boundary conditions (i.e., $u = 0$ on $\partial \Omega$), the boundary term vanishes:
+Assuming homogeneous Dirichlet boundary conditions (i.e., \(u = 0\) on \(\partial \Omega\)), the boundary term vanishes:
 
 $$
 \left. \nu \frac{\partial u}{\partial x} v \right|_0^L = 0
@@ -103,67 +107,67 @@ $$
 Thus, we obtain:
 
 $$
-\int_0^L \left( \frac{\partial u}{\partial t} v + u \frac{\partial u}{\partial x} v + \nu \frac{\partial u}{\partial x} \frac{\partial v}{\partial x} - f(x,t) v \right)  dx = 0
+\int_0^L \left( \frac{\partial u}{\partial t} v + u \frac{\partial u}{\partial x} v + \nu \frac{\partial u}{\partial x} \frac{\partial v(x)}{\partial x} - f(x,t) v \right) \, dx = 0
 $$
 
 The weak form of the 1D Burgers' equation with viscosity and a source term is:
 
 $$
-\int_0^L \left( \frac{\partial u}{\partial t} v + u \frac{\partial u}{\partial x} v + \nu \frac{\partial u}{\partial x} \frac{\partial v}{\partial x} \right)  dx = \int_0^L f(x,t) v  dx
+\int_0^L \left( \frac{\partial u}{\partial t} v + u \frac{\partial u}{\partial x} v + \nu \frac{\partial u}{\partial x} \frac{\partial v(x)}{\partial x} \right) \, dx = \int_0^L f(x,t) v \, dx
 $$
 
-This equation must be satisfied for all test functions $v(x)$ in the appropriate function space.
+This equation must be satisfied for all test functions \(v(x)\) in the appropriate function space.
 
 ## Finite Element Discretization
 
 ### 1. Discretizing the Domain
 
-Discretize the domain $[0, L]$ into $E$ finite elements with nodes $x_i$, where $i = 1, 2, \ldots, E$.
+Discretize the domain \([0, L]\) into \(E\) finite elements with nodes \(x_i\), where \(i = 1, 2, \ldots, n\) and \(n\) is the total number of nodes.
 
 ### 2. Approximating the Solution and Test Functions
 
-Approximate the solution $u(x,t)$ and the test function $v(x)$ using finite element basis functions $N_i(x)$:
+Approximate the solution \(u(x,t)\) and the test function \(v(x)\) using finite element basis functions \(N_i(x)\):
 
 $$
-u(x,t) \approx \sum_{j=1}^{E} U_j(t) N_j(x), \quad v(x) = N_i(x)
+u(x,t) \approx \sum_{j=1}^{n} U_j(t) N_j(x), \quad v(x) = N_i(x)
 $$
 
-Here, $U_j(t)$ are the time-dependent coefficients, and $N_j(x)$ are the shape functions.
+Here, \(U_j(t)\) are the time-dependent coefficients (nodal values) of the solution, and \(N_j(x)\) are the shape functions associated with each node.
 
 ### 3. Substituting into the Weak Form
 
 Substitute these approximations into the weak form and simplify:
 
 $$
-\sum_{j=1}^{E} \frac{dU_j(t)}{dt} \int_0^L N_j(x) N_i(x)  dx + \int_0^L U(x,t) \frac{\partial N_j(x)}{\partial x} N_i(x)  dx + \nu \sum_{j=1}^{E} U_j(t) \int_0^L \frac{\partial N_j(x)}{\partial x} \frac{\partial N_i(x)}{\partial x}  dx = \int_0^L f(x,t) N_i(x)  dx
+\sum_{j=1}^{n} \frac{dU_j(t)}{dt} \int_0^L N_j(x) N_i(x) \, dx + \int_0^L U(x,t) \frac{\partial N_j(x)}{\partial x} N_i(x) \, dx + \nu \sum_{j=1}^{n} U_j(t) \int_0^L \frac{\partial N_j(x)}{\partial x} \frac{\partial N_i(x)}{\partial x} \, dx = \int_0^L f(x,t) N_i(x) \, dx
 $$
 
 ### 4. Defining the Matrices
 
 This can be rewritten in matrix form:
 
-- **Mass Matrix $\mathbf{M}$:**
+- **Mass Matrix \(\mathbf{M}\):**
 
 $$
-\mathbf{M}_{ij} = \int_0^L N_i(x) N_j(x)  dx
+\mathbf{M}_{ij} = \int_0^L N_i(x) N_j(x) \, dx
 $$
 
-- **Convection Term $\mathbf{C}(\mathbf{U})$:**
+- **Convection Term \(\mathbf{C}(\mathbf{U})\):**
 
 $$
-\mathbf{C}_{ij}(\mathbf{U}) = \int_0^L U(x,t) \frac{\partial N_j(x)}{\partial x} N_i(x)  dx
+\mathbf{C}_{ij}(\mathbf{U}) = \int_0^L U(x,t) \frac{\partial N_j(x)}{\partial x} N_i(x) \, dx
 $$
 
-- **Diffusion Matrix $\mathbf{K}$:**
+- **Diffusion Matrix \(\mathbf{K}\):**
 
 $$
-\mathbf{K}_{ij} = \nu \int_0^L \frac{\partial N_i(x)}{\partial x} \frac{\partial N_j(x)}{\partial x}  dx
+\mathbf{K}_{ij} = \nu \int_0^L \frac{\partial N_i(x)}{\partial x} \frac{\partial N_j(x)}{\partial x} \, dx
 $$
 
-- **Load Vector $\mathbf{F}$:**
+- **Load Vector \(\mathbf{F}\):**
 
 $$
-\mathbf{F}_i(t) = \int_0^L f(x,t) N_i(x)  dx
+\mathbf{F}_i(t) = \int_0^L f(x,t) N_i(x) \, dx
 $$
 
 ### 5. Discretized System of Equations
@@ -175,7 +179,7 @@ $$
 $$
 
 where:
-- $\mathbf{U}(t)$ is the vector of unknowns at the nodes.
+- \(\mathbf{U}(t)\) is the vector of unknowns at the nodes.
 
 ### 6. Time Discretization
 
