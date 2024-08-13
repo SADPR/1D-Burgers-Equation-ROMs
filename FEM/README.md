@@ -131,18 +131,18 @@ $$
 The overall system of equations is:
 
 $$
-\mathbf{M} \frac{d\mathbf{U}(t)}{dt} + \mathbf{C}(\mathbf{U})\mathbf{U} + \mathbf{K} \mathbf{U} = \mathbf{F}(t)
+\boldsymbol{M} \frac{d\boldsymbol{U}(t)}{dt} + \boldsymbol{C}(\boldsymbol{U})\boldsymbol{U} + \boldsymbol{K} \boldsymbol{U} = \boldsymbol{F}(t)
 $$
 
 where:
-- $\mathbf{U}(t)$ is the vector of unknowns at the nodes.
+- $\boldsymbol{U}(t)$ is the vector of unknowns at the nodes.
 
 ### 6. Time Discretization
 
 To solve this system over time, you apply a time discretization method such as the implicit Euler scheme:
 
 $$
-\mathbf{M} \frac{\mathbf{U}^{n+1} - \mathbf{U}^n}{\Delta t} + \mathbf{C}(\mathbf{U}^{n+1}) \mathbf{U}^{n+1} + \mathbf{K} \mathbf{U}^{n+1} = \mathbf{F}^{n+1}
+\boldsymbol{M} \frac{\boldsymbol{U}^{n+1} - \boldsymbol{U}^n}{\Delta t} + \boldsymbol{C}(\boldsymbol{U}^{n+1}) \boldsymbol{U}^{n+1} + \boldsymbol{K} \boldsymbol{U}^{n+1} = \boldsymbol{F}^{n+1}
 $$
 
 This forms a nonlinear system at each time step, which can be solved iteratively.
