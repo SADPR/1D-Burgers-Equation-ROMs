@@ -11,6 +11,6 @@
 ### Diffusion Matrix
 ![Theory and Discretization](media/FEM_Matrices_4.png)
 
-### oad Vector (Source Term)
+### Load Vector (Source Term)
 ![Theory and Discretization](media/FEM_Matrices_5.png)
 
