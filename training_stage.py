@@ -47,19 +47,19 @@ corners = np.array([
 all_samples = np.vstack([lhs_samples, corners])
 
 # Save the parameter combinations
-np.save("training_data/parameter_combinations.npy", all_samples)
+np.save("new_training_data/parameter_combinations.npy", all_samples)
 
 # Visualize the sampling and save the plot as PNG
 plt.scatter(all_samples[:, 0], all_samples[:, 1])
 plt.xlabel('$\mu_1$')
 plt.ylabel('$\mu_2$')
 plt.title('LHS Sampling of $\mu_1$ and $\mu_2$')
-plt.savefig("training_data/lhs_sampling_plot.png")
+plt.savefig("new_training_data/lhs_sampling_plot.png")
 plt.close()  # Close the plot to avoid displaying it
 
 # Create directories for saving the training data and gifs
-os.makedirs("training_data", exist_ok=True)
-os.makedirs("training_gifs", exist_ok=True)
+os.makedirs("new_training_data", exist_ok=True)
+os.makedirs("new_training_gifs", exist_ok=True)
 
 # Running the simulations for each sample
 for i, (mu1, mu2) in enumerate(all_samples):
@@ -91,7 +91,7 @@ for i, (mu1, mu2) in enumerate(all_samples):
     U_FOM = fem_burgers.fom_burgers(At, nTimeSteps, u0, mu1, E, mu2)
 
     # Construct filename with parameters
-    filename = f"training_data/simulation_mu1_{mu1:.2f}_mu2_{mu2:.4f}.npy"
+    filename = f"new_training_data/simulation_mu1_{mu1:.2f}_mu2_{mu2:.4f}.npy"
 
     # Save the result
     np.save(filename, U_FOM)
@@ -114,12 +114,12 @@ for i, (mu1, mu2) in enumerate(all_samples):
     ani = FuncAnimation(fig, update, frames=nTimeSteps + 1, blit=True)
 
     # Save animation as GIF
-    gif_filename = f"training_gifs/simulation_mu1_{mu1:.2f}_mu2_{mu2:.4f}.gif"
+    gif_filename = f"new_training_gifs/simulation_mu1_{mu1:.2f}_mu2_{mu2:.4f}.gif"
     ani.save(gif_filename, writer=PillowWriter(fps=10))
     plt.close(fig)  # Close the figure to avoid displaying it
 
 # Save the samples for reference
-np.save("training_data/lhs_samples.npy", all_samples)
+np.save("new_training_data/lhs_samples.npy", all_samples)
 
 
 
