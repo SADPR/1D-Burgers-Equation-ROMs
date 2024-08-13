@@ -30,7 +30,7 @@ def generate_lhs_samples(n_samples, param_ranges):
 
 # Parameter ranges for mu1 and mu2
 param_ranges = [(4.25, 5.5), (0.015, 0.03)]
-n_lhs_samples = 496  # Number of LHS samples excluding the 4 corners
+n_lhs_samples = 4  # Number of LHS samples excluding the 4 corners
 
 # Generate LHS samples
 lhs_samples = generate_lhs_samples(n_lhs_samples, param_ranges)
@@ -79,7 +79,7 @@ for i, (mu1, mu2) in enumerate(all_samples):
     u0 = np.ones_like(X)
 
     # Time discretization and numerical diffusion
-    Tf = 35
+    Tf = 2
     At = 0.07
     nTimeSteps = int(Tf / At)
     E = 0.01
