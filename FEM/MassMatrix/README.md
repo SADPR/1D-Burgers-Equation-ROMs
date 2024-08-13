@@ -9,7 +9,7 @@ $$
 $$
 
 where:
-- $N_i(x)$ and $N_j(x)$ are the shape functions associated with the $i$th and $j$th nodes, respectively.
+- $N_i(x)$ and $N_j(x)$ are the shape functions associated with the ith and jth nodes, respectively.
 - $\Omega$ is the domain of the element over which the integration is performed.
 
 ### 2. Transformation to the Reference Element
