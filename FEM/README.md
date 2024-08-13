@@ -39,7 +39,7 @@ where $\mu_2$ is a parameter that defines the spatial variation of the source te
 To derive the weak form of the 1D Burgers' equation, we start with the strong form:
 
 $$
-\frac{\partial u(x,t)}{\partial t} + u(x,t) \frac{\partial u(x,t)}{\partial x} - \nu \frac{\partial^2 u(x,t)}{\partial x^2} = f(x,t)
+\frac{\partial u(x,t)}{\partial t} + u(x,t) \frac{\partial u(x,t)}{\partial x} = \nu \frac{\partial^2 u(x,t)}{\partial x^2} + f(x,t)
 $$
 
 We multiply by a test function $v(x)$ and integrate over the domain $[0, L]$:
@@ -51,10 +51,10 @@ $$
 We handle the second-order derivative term $- \nu \frac{\partial^2 u}{\partial x^2}$ using integration by parts:
 
 $$
-\int_0^L - \nu \frac{\partial^2 u}{\partial x^2} v \, dx = \left[ - \nu \frac{\partial u}{\partial x} v \right]_0^L + \int_0^L \nu \frac{\partial u}{\partial x} \frac{\partial v}{\partial x} \, dx
+-\nu \int_0^L \frac{\partial^2 u}{\partial x^2} v \, dx = \left[ - \nu \frac{\partial u}{\partial x} v \right]_0^L + \int_0^L \nu \frac{\partial u}{\partial x} \frac{\partial v}{\partial x} \, dx
 $$
 
-Assuming natural boundary conditions, the boundary term vanishes:
+Assuming homogeneous Dirichlet boundary conditions (i.e., $u = 0$ on $\partial \Omega$), the boundary term vanishes:
 
 $$
 \left. \nu \frac{\partial u}{\partial x} v \right|_0^L = 0
