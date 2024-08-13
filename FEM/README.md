@@ -95,11 +95,7 @@ Here, $U_j(t)$ are the time-dependent coefficients, and $N_j(x)$ are the shape f
 Substitute these approximations into the weak form and simplify:
 
 $$
-\sum_{j=1}^{N} \frac{dU_j(t)}{dt} \int_0^L N_j(x) N_i(x)  dx + \sum_{j=1}^{N} U_j(t) \int_0^L \left( \sum_{k=1}^{N} U_k(t) N_k(x) \right) \frac{\partial N_j(x)}{\partial x} N_i(x)  dx 
-$$
-
-$$
-+ \nu \sum_{j=1}^{N} U_j(t) \int_0^L \frac{\partial N_j(x)}{\partial x} \frac{\partial N_i(x)}{\partial x}  dx = \int_0^L f(x,t) N_i(x)  dx
+\sum_{j=1}^{N} \frac{dU_j(t)}{dt} \int_0^L N_j(x) N_i(x)  dx + \sum_{j=1}^{N} U_j(t) \int_0^L \left( \sum_{k=1}^{N} U_k(t) N_k(x) \right) \frac{\partial N_j(x)}{\partial x} N_i(x)  dx + \nu \sum_{j=1}^{N} U_j(t) \int_0^L \frac{\partial N_j(x)}{\partial x} \frac{\partial N_i(x)}{\partial x}  dx = \int_0^L f(x,t) N_i(x)  dx
 $$
 
 ### 4. Defining the Matrices
