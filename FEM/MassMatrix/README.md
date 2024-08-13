@@ -3,6 +3,7 @@
 ### 1. Definition of the Mass Matrix
 
 In FEM, the mass matrix $\mathbf{M}$ is defined as:
+`\int_{-1}^{1} f(\xi) \, d\xi \approx \sum_{k=1}^{n_{\text{gauss}}} w_k f(\xi_k)`
 
 $$
 \mathbf{M}_{ij} = \int_{\Omega} N_i(x) N_j(x) dx
