@@ -74,3 +74,79 @@ $$
 
 This equation must be satisfied for all test functions $v(x)$ in the appropriate function space.
 
+## Finite Element Discretization
+
+### 1. Discretizing the Domain
+
+Discretize the domain $[0, L]$ into $N$ finite elements with nodes $x_i$, where $i = 1, 2, \ldots, N$.
+
+### 2. Approximating the Solution and Test Functions
+
+Approximate the solution $u(x,t)$ and the test function $v(x)$ using finite element basis functions $N_i(x)$:
+
+$$
+u(x,t) \approx \sum_{j=1}^{N} U_j(t) N_j(x), \quad v(x) = N_i(x)
+$$
+
+Here, $U_j(t)$ are the time-dependent coefficients, and $N_j(x)$ are the shape functions.
+
+### 3. Substituting into the Weak Form
+
+Substitute these approximations into the weak form and simplify:
+
+$$
+\sum_{j=1}^{N} \frac{dU_j(t)}{dt} \int_0^L N_j(x) N_i(x) \, dx + \sum_{j=1}^{N} U_j(t) \int_0^L \left( \sum_{k=1}^{N} U_k(t) N_k(x) \right) \frac{\partial N_j(x)}{\partial x} N_i(x) \, dx 
+$$
+
+$$
++ \nu \sum_{j=1}^{N} U_j(t) \int_0^L \frac{\partial N_j(x)}{\partial x} \frac{\partial N_i(x)}{\partial x} \, dx = \int_0^L f(x,t) N_i(x) \, dx
+$$
+
+### 4. Defining the Matrices
+
+This can be rewritten in matrix form:
+
+- **Mass Matrix $M$:**
+
+$$
+M_{ij} = \int_0^L N_i(x) N_j(x) \, dx
+$$
+
+- **Convection Term $C(U)$:**
+
+$$
+C_{ij}(U) = \sum_{k=1}^{N} U_k(t) \int_0^L N_k(x) \frac{\partial N_j(x)}{\partial x} N_i(x) \, dx
+$$
+
+- **Diffusion Matrix $K$:**
+
+$$
+K_{ij} = \nu \int_0^L \frac{\partial N_i(x)}{\partial x} \frac{\partial N_j(x)}{\partial x} \, dx
+$$
+
+- **Load Vector $F$:**
+
+$$
+F_i(t) = \int_0^L f(x,t) N_i(x) \, dx
+$$
+
+### 5. Discretized System of Equations
+
+The overall system of equations is:
+
+$$
+M \frac{d\mathbf{U}(t)}{dt} + C(\mathbf{U})\mathbf{U} + K \mathbf{U} = \mathbf{F}(t)
+$$
+
+where:
+- $\mathbf{U}(t)$ is the vector of unknowns at the nodes.
+
+### 6. Time Discretization
+
+To solve this system over time, you apply a time discretization method such as the implicit Euler scheme:
+
+$$
+M \frac{\mathbf{U}^{n+1} - \mathbf{U}^n}{\Delta t} + C(\mathbf{U}^{n+1}) \mathbf{U}^{n+1} + K \mathbf{U}^{n+1} = \mathbf{F}^{n+1}
+$$
+
+This forms a nonlinear system at each time step, which can be solved iteratively.
