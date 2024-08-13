@@ -142,7 +142,7 @@ where:
 To solve this system over time, you apply a time discretization method such as the implicit Euler scheme:
 
 $$
-\mathsf{\mathbf{M}} \frac{\boldsymbol{U}^{n+1} - \boldsymbol{U}^n}{\Delta t} + \boldsymbol{C}(\boldsymbol{U}^{n+1}) \boldsymbol{U}^{n+1} + \boldsymbol{K} \boldsymbol{U}^{n+1} = \boldsymbol{F}^{n+1}
+**M** \frac{\boldsymbol{U}^{n+1} - \boldsymbol{U}^n}{\Delta t} + \boldsymbol{C}(\boldsymbol{U}^{n+1}) \boldsymbol{U}^{n+1} + \boldsymbol{K} \boldsymbol{U}^{n+1} = \boldsymbol{F}^{n+1}
 $$
 
 This forms a nonlinear system at each time step, which can be solved iteratively.
