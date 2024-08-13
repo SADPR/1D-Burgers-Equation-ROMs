@@ -45,13 +45,13 @@ $$
 We multiply by a test function $v(x)$ and integrate over the domain $[0, L]$:
 
 $$
-\int_0^L \left( \frac{\partial u(x,t)}{\partial t} + u(x,t) \frac{\partial u(x,t)}{\partial x} - \nu \frac{\partial^2 u(x,t)}{\partial x^2} - f(x,t) \right) v(x) \, dx = 0
+\int_0^L \left( \frac{\partial u(x,t)}{\partial t} + u(x,t) \frac{\partial u(x,t)}{\partial x} - \nu \frac{\partial^2 u(x,t)}{\partial x^2} - f(x,t) \right) v(x)  dx = 0
 $$
 
 We handle the second-order derivative term $- \nu \frac{\partial^2 u}{\partial x^2}$ using integration by parts:
 
 $$
--\nu \int_0^L \frac{\partial^2 u}{\partial x^2} v \, dx = \left[ - \nu \frac{\partial u}{\partial x} v \right]_0^L + \int_0^L \nu \frac{\partial u}{\partial x} \frac{\partial v}{\partial x} \, dx
+-\nu \int_0^L \frac{\partial^2 u}{\partial x^2} v  dx = \left[ - \nu \frac{\partial u}{\partial x} v \right]_0^L + \int_0^L \nu \frac{\partial u}{\partial x} \frac{\partial v}{\partial x}  dx
 $$
 
 Assuming homogeneous Dirichlet boundary conditions (i.e., $u = 0$ on $\partial \Omega$), the boundary term vanishes:
@@ -69,7 +69,7 @@ $$
 The weak form of the 1D Burgers' equation with viscosity and a source term is:
 
 $$
-\int_0^L \left( \frac{\partial u}{\partial t} v + u \frac{\partial u}{\partial x} v + \nu \frac{\partial u}{\partial x} \frac{\partial v}{\partial x} \right) dx = \int_0^L f(x,t) v \, dx
+\int_0^L \left( \frac{\partial u}{\partial t} v + u \frac{\partial u}{\partial x} v + \nu \frac{\partial u}{\partial x} \frac{\partial v}{\partial x} \right) dx = \int_0^L f(x,t) v  dx
 $$
 
 This equation must be satisfied for all test functions $v(x)$ in the appropriate function space.
@@ -79,7 +79,7 @@ This equation must be satisfied for all test functions $v(x)$ in the appropriate
 Given the weak form of the 1D Burgers' equation:
 
 $$
-\int_0^L \left( \frac{\partial u}{\partial t} v + u \frac{\partial u}{\partial x} v + \nu \frac{\partial u}{\partial x} \frac{\partial v}{\partial x} - f v \right) \, dx = 0
+\int_0^L \left( \frac{\partial u}{\partial t} v + u \frac{\partial u}{\partial x} v + \nu \frac{\partial u}{\partial x} \frac{\partial v}{\partial x} - f v \right)  dx = 0
 $$
 
 we will discretize it using the Finite Element Method.
@@ -117,19 +117,19 @@ Now expand and simplify each term:
 #### Time Derivative Term:
 
 $$
-\int_0^L \frac{\partial}{\partial t} \left( \sum_{j=1}^{N} U_j N_j \right) N_i \, dx = \int_0^L \sum_{j=1}^{N} \frac{d U_j}{d t} N_j N_i \, dx
+\int_0^L \frac{\partial}{\partial t} \left( \sum_{j=1}^{N} U_j N_j \right) N_i  dx = \int_0^L \sum_{j=1}^{N} \frac{d U_j}{d t} N_j N_i  dx
 $$
 
 This can be written as:
 
 $$
-\sum_{j=1}^{N} \frac{d U_j}{d t} \int_0^L N_j N_i \, dx
+\sum_{j=1}^{N} \frac{d U_j}{d t} \int_0^L N_j N_i  dx
 $$
 
 Define the **mass matrix** $M$ as:
 
 $$
-M_{ij} = \int_0^L N_i N_j \, dx
+M_{ij} = \int_0^L N_i N_j  dx
 $$
 
 Thus, the time derivative term becomes:
@@ -141,19 +141,19 @@ $$
 #### Convection Term:
 
 $$
-\int_0^L \left( \sum_{j=1}^{N} U_j N_j \right) \frac{\partial}{\partial x} \left( \sum_{k=1}^{N} U_k N_k \right) N_i \, dx = \int_0^L \sum_{j=1}^{N} \sum_{k=1}^{N} U_j U_k N_j \frac{\partial N_k}{\partial x} N_i \, dx
+\int_0^L \left( \sum_{j=1}^{N} U_j N_j \right) \frac{\partial}{\partial x} \left( \sum_{k=1}^{N} U_k N_k \right) N_i  dx = \int_0^L \sum_{j=1}^{N} \sum_{k=1}^{N} U_j U_k N_j \frac{\partial N_k}{\partial x} N_i  dx
 $$
 
 This can be written as:
 
 $$
-\sum_{j=1}^{N} \sum_{k=1}^{N} U_j U_k \int_0^L N_j \frac{\partial N_k}{\partial x} N_i \, dx
+\sum_{j=1}^{N} \sum_{k=1}^{N} U_j U_k \int_0^L N_j \frac{\partial N_k}{\partial x} N_i  dx
 $$
 
 Define the **convection matrix** $C$ as:
 
 $$
-C_{ijk} = \int_0^L N_i N_j \frac{\partial N_k}{\partial x} \, dx
+C_{ijk} = \int_0^L N_i N_j \frac{\partial N_k}{\partial x}  dx
 $$
 
 Thus, the convection term becomes:
@@ -173,25 +173,25 @@ $$
 Where:
 
 $$
-\mathbf{C}_{jk} = \int_0^L N_j \frac{\partial N_k}{\partial x} N_i \, dx
+\mathbf{C}_{jk} = \int_0^L N_j \frac{\partial N_k}{\partial x} N_i  dx
 $$
 
 #### Diffusion Term:
 
 $$
-\int_0^L \nu \frac{\partial}{\partial x} \left( \sum_{j=1}^{N} U_j N_j \right) \frac{\partial N_i}{\partial x} \, dx = \int_0^L \nu \sum_{j=1}^{N} U_j \frac{\partial N_j}{\partial x} \frac{\partial N_i}{\partial x} \, dx
+\int_0^L \nu \frac{\partial}{\partial x} \left( \sum_{j=1}^{N} U_j N_j \right) \frac{\partial N_i}{\partial x}  dx = \int_0^L \nu \sum_{j=1}^{N} U_j \frac{\partial N_j}{\partial x} \frac{\partial N_i}{\partial x}  dx
 $$
 
 This can be written as:
 
 $$
-\nu \sum_{j=1}^{N} U_j \int_0^L \frac{\partial N_j}{\partial x} \frac{\partial N_i}{\partial x} \, dx
+\nu \sum_{j=1}^{N} U_j \int_0^L \frac{\partial N_j}{\partial x} \frac{\partial N_i}{\partial x}  dx
 $$
 
 Define the **diffusion matrix** $K$ as:
 
 $$
-K_{ij} = \int_0^L \nu \frac{\partial N_i}{\partial x} \frac{\partial N_j}{\partial x} \, dx
+K_{ij} = \int_0^L \nu \frac{\partial N_i}{\partial x} \frac{\partial N_j}{\partial x}  dx
 $$
 
 Thus, the diffusion term becomes:
@@ -203,13 +203,13 @@ $$
 #### Source Term:
 
 $$
-\int_0^L f N_i \, dx
+\int_0^L f N_i  dx
 $$
 
 Define the **load vector** $F$ as:
 
 $$
-F_i = \int_0^L f N_i \, dx
+F_i = \int_0^L f N_i  dx
 $$
 
 ### Discretized Weak Form
@@ -240,7 +240,7 @@ To simplify the handling of the convective term, we use a contraction to avoid t
 1. **Evaluate the Integral:**
 
 $$
-C_{ij} = \int_0^L N_i(x) \frac{\partial N_j(x)}{\partial x} \, dx
+C_{ij} = \int_0^L N_i(x) \frac{\partial N_j(x)}{\partial x}  dx
 $$
 
 This matrix $C_{ij}$ captures the interaction between shape functions and their derivatives over the domain.
@@ -268,7 +268,7 @@ Here, the contraction \( \sum_{k=1}^{N} U_k C_{ijk} \) simplifies the expression
 The final convection matrix used in the finite element method is thus:
 
 $$
-C(U){ij} = \sum_{k=1}^{N} U_k \int_0^L N_j(x) \frac{\partial N_k(x)}{\partial x} \, dx
+C(U){ij} = \sum_{k=1}^{N} U_k \int_0^L N_j(x) \frac{\partial N_k(x)}{\partial x}  dx
 $$
 
 This simplifies the handling of the convection term and avoids directly dealing with higher-order tensors.
