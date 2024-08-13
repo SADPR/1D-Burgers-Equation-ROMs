@@ -78,14 +78,14 @@ This equation must be satisfied for all test functions $v(x)$ in the appropriate
 
 ### 1. Discretizing the Domain
 
-Discretize the domain $[0, L]$ into $N$ finite elements with nodes $x_i$, where $i = 1, 2, \ldots, N$.
+Discretize the domain $[0, L]$ into $E$ finite elements with nodes $x_i$, where $i = 1, 2, \ldots, E$.
 
 ### 2. Approximating the Solution and Test Functions
 
 Approximate the solution $u(x,t)$ and the test function $v(x)$ using finite element basis functions $N_i(x)$:
 
 $$
-u(x,t) \approx \sum_{j=1}^{N} U_j(t) N_j(x), \quad v(x) = N_i(x)
+u(x,t) \approx \sum_{j=1}^{E} U_j(t) N_j(x), \quad v(x) = N_i(x)
 $$
 
 Here, $U_j(t)$ are the time-dependent coefficients, and $N_j(x)$ are the shape functions.
@@ -95,7 +95,7 @@ Here, $U_j(t)$ are the time-dependent coefficients, and $N_j(x)$ are the shape f
 Substitute these approximations into the weak form and simplify:
 
 $$
-\sum_{j=1}^{N} \frac{dU_j(t)}{dt} \int_0^L N_j(x) N_i(x) \, dx + \sum_{j=1}^{N} U_j(t) \int_0^L \left( \sum_{k=1}^{N} U_k(t) N_k(x) \right) \frac{\partial N_j(x)}{\partial x} N_i(x) \, dx + \nu \sum_{j=1}^{N} U_j(t) \int_0^L \frac{\partial N_j(x)}{\partial x} \frac{\partial N_i(x)}{\partial x} \, dx = \int_0^L f(x,t) N_i(x) \, dx
+\sum_{j=1}^{E} \frac{dU_j(t)}{dt} \int_0^L N_j(x) N_i(x) \, dx + \sum_{j=1}^{E} U_j(t) \int_0^L \left( \sum_{k=1}^{E} U_k(t) N_k(x) \right) \frac{\partial N_j(x)}{\partial x} N_i(x) \, dx + \nu \sum_{j=1}^{E} U_j(t) \int_0^L \frac{\partial N_j(x)}{\partial x} \frac{\partial N_i(x)}{\partial x} \, dx = \int_0^L f(x,t) N_i(x) \, dx
 $$
 
 ### 4. Defining the Matrices
@@ -111,7 +111,7 @@ $$
 - **Convection Term $C(U)$:**
 
 $$
-C_{ij}(U) = \sum_{k=1}^{N} U_k(t) \int_0^L N_k(x) \frac{\partial N_j(x)}{\partial x} N_i(x) \, dx
+C_{ij}(U) = \sum_{k=1}^{E} U_k(t) \int_0^L N_k(x) \frac{\partial N_j(x)}{\partial x} N_i(x) \, dx
 $$
 
 - **Diffusion Matrix $K$:**
@@ -130,7 +130,7 @@ $$
 
 The overall system of equations is:
 
-**M** $\frac{d\boldsymbol{U}(t)}{dt}$ + **C**($\boldsymbol{U}$)$\boldsymbol{U}$ + **K** $\boldsymbol{U}$ = **F**($t$)
+**M** $\frac{\textbf{U}^{n+1} - \textbf{U}^n}{\Delta t}$ + **C**($\textbf{U}^{n+1}$) $\textbf{U}^{n+1}$ + **K** $\textbf{U}^{n+1}$ = **F**($t^{n+1}$)
 
 where:
 - **U**($t$) is the vector of unknowns at the nodes.
@@ -139,6 +139,6 @@ where:
 
 To solve this system over time, you apply a time discretization method such as the implicit Euler scheme:
 
-**M** $\frac{\boldsymbol{U}^{n+1} - \boldsymbol{U}^n}{\Delta t}$ + **C**($\boldsymbol{U}^{n+1}$) $\boldsymbol{U}^{n+1}$ + **K** $\boldsymbol{U}^{n+1}$ = **F**($t^{n+1}$)
+**M** $\frac{\textbf{U}^{n+1} - \textbf{U}^n}{\Delta t}$ + **C**($\textbf{U}^{n+1}$) $\textbf{U}^{n+1}$ + **K** $\textbf{U}^{n+1}$ = **F**($t^{n+1}$)
 
 This forms a nonlinear system at each time step, which can be solved iteratively.
