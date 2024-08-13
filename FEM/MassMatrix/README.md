@@ -8,11 +8,6 @@ $$
 \mathbf{M}_{ij} = \int{\Omega} N_i(x) N_j(x) dx
 $$
 
-
-$$
-\mathbf{M}_{ij} = \int_{\Omega} N_i(x) N_j(x) dx
-$$
-
 where:
 - $N_i(x)$ and $N_j(x)$ are the shape functions associated with the $i$th and $j$th nodes, respectively.
 - $\Omega$ is the domain of the element over which the integration is performed.
