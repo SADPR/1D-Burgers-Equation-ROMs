@@ -13,7 +13,7 @@ images = convert_from_path(pdf_path)
 
 # Save each page as a PNG file
 for i, image in enumerate(images):
-    image_path = os.path.join(output_folder, f'FEM_{i}.png')
+    image_path = os.path.join(output_folder, f'FEM_Matrices_{i}.png')
     image.save(image_path, 'PNG')
 
 print(f'PDF converted to PNG images and saved in "{output_folder}" directory.')
