@@ -30,7 +30,7 @@ def generate_lhs_samples(n_samples, param_ranges):
 
 # Parameter ranges for mu1 and mu2
 param_ranges = [(4.25, 5.5), (0.015, 0.03)]
-n_lhs_samples = 4  # Number of LHS samples excluding the 4 corners
+n_lhs_samples = 496  # Number of LHS samples excluding the 4 corners
 
 # Generate LHS samples
 lhs_samples = generate_lhs_samples(n_lhs_samples, param_ranges)
@@ -58,12 +58,8 @@ plt.scatter(all_samples[:, 0], all_samples[:, 1])
 plt.xlabel('$\mu_1$')
 plt.ylabel('$\mu_2$')
 plt.title('LHS Sampling of $\mu_1$ and $\mu_2$')
-plt.savefig("../new_training_data/lhs_sampling_plot.png")
+plt.savefig("../new_training_data/lhs_sampling_plot.pdf")
 plt.close()  # Close the plot to avoid displaying it
-
-# Create directories for saving the training data and gifs
-os.makedirs("../new_training_data", exist_ok=True)
-os.makedirs("../new_training_gifs", exist_ok=True)
 
 # Running the simulations for each sample
 for i, (mu1, mu2) in enumerate(all_samples):
