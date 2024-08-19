@@ -17,112 +17,143 @@ class FEMBurgers:
         self.Nxi = np.array([[-1 / 2, 1 / 2], [-1 / 2, 1 / 2]])
 
     def compute_mass_matrix(self):
-        npt = len(self.X)
-        numel, nen = self.T.shape
-        M = sp.lil_matrix((npt, npt))
+        n_nodes = len(self.X)  # Number of nodes
+        n_elements, n_local_nodes = self.T.shape  # Number of elements and nodes per element
+        M_global = sp.lil_matrix((n_nodes, n_nodes))  # Initialize global mass matrix
 
-        for ielem in range(numel):
-            Te = self.T[ielem, :] - 1  # Adjust for zero-based indexing in Python
-            Xe = self.X[Te].reshape(-1, 1)  # Ensure Xe is a column vector
+        for elem in range(n_elements):
+            element_nodes = self.T[elem, :] - 1  # Nodes of the current element (adjusted for 0-based indexing)
+            x_element = self.X[element_nodes].reshape(-1, 1)  # Physical coordinates of the element's nodes
 
-            Me = np.zeros((nen, nen))
-            for ig in range(self.ngaus):
-                N_ig = self.N[ig, :]
-                Nxi_ig = self.Nxi[ig, :]
-                # Jacobian
-                J = Nxi_ig @ Xe
-                # Differential volume
-                dvolu = self.wgp[ig] * np.abs(J[0])
-                Me += np.outer(N_ig, N_ig) * dvolu
+            M_element = np.zeros((n_local_nodes, n_local_nodes))  # Initialize local mass matrix
 
-            for i in range(nen):
-                for j in range(nen):
-                    M[Te[i], Te[j]] += Me[i, j]
+            for gauss_point in range(self.ngaus):
+                N_gp = self.N[gauss_point, :]  # Shape functions at the Gauss point
+                dN_dxi_gp = self.Nxi[gauss_point, :]  # Shape function derivatives wrt reference coordinate at the Gauss point
+                
+                # Compute the Jacobian
+                J = dN_dxi_gp @ x_element
+                
+                # Compute the differential volume
+                dV = self.wgp[gauss_point] * np.abs(J)
+                
+                # Update the local mass matrix
+                M_element += np.outer(N_gp, N_gp) * dV
 
-        return M.tocsc()
+            # Assemble the local matrix into the global mass matrix
+            for i in range(n_local_nodes):
+                for j in range(n_local_nodes):
+                    M_global[element_nodes[i], element_nodes[j]] += M_element[i, j]
 
+        return M_global.tocsc()  # Convert to compressed sparse column format for efficiency
+    
     def compute_diffusion_matrix(self):
-        npt = len(self.X)
-        numel, nen = self.T.shape
-        K = sp.lil_matrix((npt, npt))
+        n_nodes = len(self.X)  # Number of nodes
+        n_elements, n_local_nodes = self.T.shape  # Number of elements and nodes per element
+        K_global = sp.lil_matrix((n_nodes, n_nodes))  # Initialize global diffusion matrix
 
-        for ielem in range(numel):
-            Te = self.T[ielem, :] - 1  # Adjust for zero-based indexing in Python
-            Xe = self.X[Te].reshape(-1, 1)  # Ensure Xe is a column vector
+        for elem in range(n_elements):
+            element_nodes = self.T[elem, :] - 1  # Nodes of the current element (adjusted for 0-based indexing)
+            x_element = self.X[element_nodes].reshape(-1, 1)  # Physical coordinates of the element's nodes
 
-            Ke = np.zeros((nen, nen))
-            for ig in range(self.ngaus):
-                N_ig = self.N[ig, :]
-                Nxi_ig = self.Nxi[ig, :]
-                # Jacobian
-                J = Nxi_ig @ Xe
-                # Differential volume
-                dvolu = self.wgp[ig] * np.abs(J)
-                Nx_ig = Nxi_ig / J  # Ensure Nx_ig is computed correctly
-                Nx_ig = Nx_ig.reshape(1, -1)
-                Ke += Nx_ig.T @ (Nx_ig * dvolu)
+            K_element = np.zeros((n_local_nodes, n_local_nodes))  # Initialize local diffusion matrix
 
-            for i in range(nen):
-                for j in range(nen):
-                    K[Te[i], Te[j]] += Ke[i, j]
+            for gauss_point in range(self.ngaus):
+                N_gp = self.N[gauss_point, :]  # Shape functions at the Gauss point
+                dN_dxi_gp = self.Nxi[gauss_point, :]  # Shape function derivatives wrt reference coordinate at the Gauss point
+                
+                # Compute the Jacobian
+                J = dN_dxi_gp @ x_element
+                
+                # Compute the differential volume
+                dV = self.wgp[gauss_point] * np.abs(J)
+                
+                # Compute the derivative of shape functions with respect to the physical coordinate
+                dN_dx_gp = dN_dxi_gp / J
+                
+                # Update the local diffusion matrix
+                K_element += np.outer(dN_dx_gp, dN_dx_gp) * dV
 
-        return K.tocsc()
+            # Assemble the local matrix into the global diffusion matrix
+            for i in range(n_local_nodes):
+                for j in range(n_local_nodes):
+                    K_global[element_nodes[i], element_nodes[j]] += K_element[i, j]
 
-    def compute_convection_matrix(self, Un):
-        npt = len(self.X)
-        numel, nen = self.T.shape
-        C = sp.lil_matrix((npt, npt))
+        return K_global.tocsc()  # Convert to compressed sparse column format for efficiency
+    
+    def compute_convection_matrix(self, U_n):
+        n_nodes = len(self.X)  # Number of nodes
+        n_elements, n_local_nodes = self.T.shape  # Number of elements and nodes per element
+        C_global = sp.lil_matrix((n_nodes, n_nodes))  # Initialize global convection matrix
 
-        for ielem in range(numel):
-            Te = self.T[ielem, :] - 1  # Adjust for zero-based indexing in Python
-            Xe = self.X[Te].reshape(-1, 1)  # Ensure Xe is a column vector
+        for elem in range(n_elements):
+            element_nodes = self.T[elem, :] - 1  # Nodes of the current element (adjusted for 0-based indexing)
+            x_element = self.X[element_nodes].reshape(-1, 1)  # Physical coordinates of the element's nodes
 
-            u_e = Un[Te]
-            Ce = np.zeros((nen, nen))
+            u_element = U_n[element_nodes]  # Solution values at the element's nodes
+            C_element = np.zeros((n_local_nodes, n_local_nodes))  # Initialize local convection matrix
 
-            for ig in range(self.ngaus):
-                N_ig = self.N[ig, :]
-                Nxi_ig = self.Nxi[ig, :]
-                # Jacobian
-                J = Nxi_ig @ Xe
-                # Differential volume
-                dvolu = self.wgp[ig] * np.abs(J)
-                Nx_ig = Nxi_ig / J  # Ensure Nx_ig is computed correctly
-                u_ig = N_ig @ u_e
-                Ce += np.outer(N_ig, u_ig * Nx_ig) * dvolu
+            for gauss_point in range(self.ngaus):
+                N_gp = self.N[gauss_point, :]  # Shape functions at the Gauss point
+                dN_dxi_gp = self.Nxi[gauss_point, :]  # Shape function derivatives wrt reference coordinate at the Gauss point
+                
+                # Compute the Jacobian
+                J = dN_dxi_gp @ x_element
+                
+                # Compute the differential volume
+                dV = self.wgp[gauss_point] * np.abs(J)
+                
+                # Compute the derivative of shape functions with respect to the physical coordinate
+                dN_dx_gp = dN_dxi_gp / J
+                
+                # Compute the solution value at the Gauss point
+                u_gp = N_gp @ u_element
+                
+                # Update the local convection matrix
+                C_element += np.outer(N_gp, u_gp * dN_dx_gp) * dV
 
-            for i in range(nen):
-                for j in range(nen):
-                    C[Te[i], Te[j]] += Ce[i, j]
+            # Assemble the local matrix into the global convection matrix
+            for i in range(n_local_nodes):
+                for j in range(n_local_nodes):
+                    C_global[element_nodes[i], element_nodes[j]] += C_element[i, j]
 
-        return C.tocsc()
+        return C_global.tocsc()  # Convert to compressed sparse column format for efficiency
 
     def compute_forcing_vector(self, mu2):
-        npt = len(self.X)
-        numel, nen = self.T.shape
-        F = np.zeros(npt)
+        n_nodes = len(self.X)  # Number of nodes
+        n_elements, n_local_nodes = self.T.shape  # Number of elements and nodes per element
+        F_global = np.zeros(n_nodes)  # Initialize global forcing vector
 
-        for ielem in range(numel):
-            Te = self.T[ielem, :] - 1  # Adjust for zero-based indexing in Python
-            Xe = self.X[Te].reshape(-1, 1)  # Ensure Xe is a column vector
+        for elem in range(n_elements):
+            element_nodes = self.T[elem, :] - 1  # Nodes of the current element (adjusted for 0-based indexing)
+            x_element = self.X[element_nodes].reshape(-1, 1)  # Physical coordinates of the element's nodes
 
-            fe = np.zeros(nen)
+            F_element = np.zeros(n_local_nodes)  # Initialize local forcing vector
 
-            for ig in range(self.ngaus):
-                N_ig = self.N[ig, :]
-                Nxi_ig = self.Nxi[ig, :]
-                # Jacobian
-                J = Nxi_ig @ Xe
-                # Differential volume
-                dvolu = self.wgp[ig] * np.abs(J)
-                x_ig = N_ig @ Xe
-                f = 0.02 * np.exp(mu2 * x_ig)
-                fe += f * N_ig * dvolu
+            for gauss_point in range(self.ngaus):
+                N_gp = self.N[gauss_point, :]  # Shape functions at the Gauss point
+                dN_dxi_gp = self.Nxi[gauss_point, :]  # Shape function derivatives wrt reference coordinate at the Gauss point
+                
+                # Compute the Jacobian
+                J = dN_dxi_gp @ x_element
+                
+                # Compute the differential volume
+                dV = self.wgp[gauss_point] * np.abs(J)
+                
+                # Compute the physical coordinate at the Gauss point
+                x_gp = N_gp @ x_element
+                
+                # Compute the forcing function at the Gauss point
+                f_gp = 0.02 * np.exp(mu2 * x_gp)
+                
+                # Update the local forcing vector
+                F_element += f_gp * N_gp * dV
 
-            for i in range(nen):
-                F[Te[i]] += fe[i]
+            # Assemble the local vector into the global forcing vector
+            for i in range(n_local_nodes):
+                F_global[element_nodes[i]] += F_element[i]
 
-        return F
+        return F_global
 
     def fom_burgers(self, At, nTimeSteps, u0, mu1, E, mu2):
         m = len(self.X) - 1
