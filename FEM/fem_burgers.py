@@ -154,6 +154,107 @@ class FEMBurgers:
                 F_global[element_nodes[i]] += F_element[i]
 
         return F_global
+    
+    def compute_convection_matrix_derivative(self, U_n):
+        n_nodes = len(self.X)  # Number of nodes
+        n_elements, n_local_nodes = self.T.shape  # Number of elements and nodes per element
+        dC_dU_global = sp.lil_matrix((n_nodes, n_nodes))  # Initialize global derivative matrix
+
+        for elem in range(n_elements):
+            element_nodes = self.T[elem, :] - 1  # Nodes of the current element
+            x_element = self.X[element_nodes].reshape(-1, 1)  # Physical coordinates of the element's nodes
+
+            u_element = U_n[element_nodes]  # Solution values at the element's nodes
+            dC_dU_element = np.zeros((n_local_nodes, n_local_nodes))  # Initialize local derivative matrix
+
+            for gauss_point in range(self.ngaus):
+                N_gp = self.N[gauss_point, :]  # Shape functions at the Gauss point
+                dN_dxi_gp = self.Nxi[gauss_point, :]  # Shape function derivatives wrt reference coordinate at the Gauss point
+                
+                # Compute the Jacobian
+                J = dN_dxi_gp @ x_element
+                
+                # Compute the differential volume
+                dV = self.wgp[gauss_point] * np.abs(J)
+                
+                # Compute the derivative of shape functions with respect to the physical coordinate
+                dN_dx_gp = dN_dxi_gp / J
+                
+                # Compute the derivative of the convection matrix with respect to U
+                for i in range(n_local_nodes):
+                    for j in range(n_local_nodes):
+                        dC_dU_element[i, j] += N_gp[i] * dN_dx_gp[j] * dV
+
+            # Assemble the local matrix into the global convection matrix derivative
+            for i in range(n_local_nodes):
+                for j in range(n_local_nodes):
+                    dC_dU_global[element_nodes[i], element_nodes[j]] += dC_dU_element[i, j]
+
+        return dC_dU_global.tocsc()  # Convert to compressed sparse column format for efficiency
+
+    def fom_burgers_newton(self, At, nTimeSteps, u0, mu1, E, mu2):
+        m = len(self.X) - 1
+
+        # Allocate memory for the solution matrix
+        U = np.zeros((m + 1, nTimeSteps + 1))
+
+        # Initial condition
+        U[:, 0] = u0
+
+        M = self.compute_mass_matrix()
+        K = self.compute_diffusion_matrix()
+
+        # Initial lambda value and scaling factor
+        lambda_ = 0.1
+        tolerance = 1e-6
+
+        for n in range(nTimeSteps):
+            print(f"Time Step: {n}. Time: {n * At}")
+            U0 = U[:, n]
+            error_U = 1
+            k = 0
+
+            while (error_U > tolerance) and (k < 100):
+                print(f"Error: {error_U}, Iteration: {k}")
+
+                # Compute convection matrix
+                C = self.compute_convection_matrix(U0)
+                
+                # Compute derivative of convection matrix
+                dC_dU = self.compute_convection_matrix_derivative(U0)
+                
+                # Construct the Jacobian matrix
+                J = M + At * E * K + At * C + At * dC_dU @ U0  # Matrix multiplication for dC_dU * U0
+
+                # Apply boundary condition to Jacobian matrix
+                J[0, :] = 0
+                J[0, 0] = 1
+
+                # Compute the residual
+                R = (M + At * C + At * E * K) @ U0 - (M @ U[:, n] + At * self.compute_forcing_vector(mu2))
+
+                # Apply boundary condition to the residual
+                R[0] = U0[0] - mu1
+
+                # Solve for the update delta_U
+                delta_U = spla.spsolve(J, -R)
+
+                # Update the solution with the damping factor
+                U1 = U0 + lambda_ * delta_U
+
+                # Compute the error for convergence check
+                error_new = np.linalg.norm(U1 - U0) / np.linalg.norm(U1)
+
+                error_U = error_new
+                U0 = U1
+                k += 1
+
+            U[:, n + 1] = U1
+
+        return U
+
+
+
 
     def fom_burgers(self, At, nTimeSteps, u0, mu1, E, mu2):
         m = len(self.X) - 1
@@ -210,7 +311,7 @@ class FEMBurgers:
 
         return U
     
-    def prom_burgers(self, At, nTimeSteps, u0, uxa, E, mu2, Phi):
+    def pod_prom_burgers(self, At, nTimeSteps, u0, uxa, E, mu2, Phi, projection="Galerkin"):
         m = len(self.X) - 1
 
         # Allocate memory for the solution matrix
@@ -244,9 +345,20 @@ class FEMBurgers:
                 # Modify b for boundary conditions
                 b[0] = uxa
 
-                # Project the full-order matrices and vectors onto the reduced space
-                Ar = Phi.T @ A @ Phi
-                br = Phi.T @ b
+                if projection == "Galerkin":
+                    # Project the full-order matrices and vectors onto the reduced space using Galerkin projection
+                    Ar = Phi.T @ A @ Phi
+                    br = Phi.T @ b
+                elif projection == "LSPG":
+                    # Project the full-order matrices and vectors onto the reduced space using LSPG projection
+                    Psi = A @ Phi
+                    Ar = Psi.T @ Psi
+                    br = Psi.T @ b
+                else:
+                    # Raise an error if the projection method is not recognized
+                    raise ValueError(f"Projection method '{projection}' is not available. Please use 'Galerkin' or 'LSPG'.")
+
+                    
 
                 # Solve the reduced-order system
                 Ur1 = np.linalg.solve(Ar, br)
