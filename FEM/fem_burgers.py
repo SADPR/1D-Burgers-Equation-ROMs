@@ -253,9 +253,7 @@ class FEMBurgers:
 
         return U
 
-
-
-
+    
     def fom_burgers(self, At, nTimeSteps, u0, mu1, E, mu2):
         m = len(self.X) - 1
 
@@ -273,40 +271,45 @@ class FEMBurgers:
             U0 = U[:, n]
             error_U = 1
             k = 0
-            while (error_U > 0.5e-5) and (k < 20):
-                # print(f"Iteration {k}. Error: {error_U}")
-                # Timing the compute_convection_matrix function
-                start_time = time.time()
+            while (error_U > 1e-6) and (k < 20):
+                print(f"Iteration: {k}, Error: {error_U}")
+                
+                # Compute convection matrix using the current solution guess
                 C = self.compute_convection_matrix(U0)
-                end_time = time.time()
-                # print(f'Time taken for compute_convection_matrix: {end_time - start_time:.4f} seconds')
-
-                # Timing the compute_forcing_vector function
-                start_time = time.time()
+                
+                # Compute forcing vector
                 F = self.compute_forcing_vector(mu2)
-                end_time = time.time()
-                # print(f'Time taken for compute_forcing_vector: {end_time - start_time:.4f} seconds')
 
+                # Form the system matrix A
                 A = M + At * C + At * E * K
 
                 # Modify A for boundary conditions
                 A[0, :] = 0
                 A[0, 0] = 1
 
-                # Compute right-hand side vector b
+                # Compute the right-hand side vector b
                 b = M @ U[:, n] + At * F
 
                 # Modify b for boundary conditions
                 b[0] = mu1
 
-                start_time = time.time()
-                U1 = spla.spsolve(A, b)
-                end_time = time.time()
-                # print(f'Time taken for spla.spsolve: {end_time - start_time:.4f} seconds')
+                # Compute the residual R
+                R = A @ U0 - b
 
-                error_U = np.linalg.norm(U1 - U0) / np.linalg.norm(U1)
+                # Solve the linear system J * δU = -R
+                delta_U = spla.spsolve(A, -R)
+
+                # Update the solution using the correction term
+                U1 = U0 + delta_U
+
+                # Compute the error to check for convergence
+                error_U = np.linalg.norm(delta_U) / np.linalg.norm(U1)
+                
+                # Update the guess for the next iteration
                 U0 = U1
                 k += 1
+
+            # Store the converged solution for this time step
             U[:, n + 1] = U1
 
         return U
@@ -324,60 +327,61 @@ class FEMBurgers:
         K = self.compute_diffusion_matrix()
 
         for n in range(nTimeSteps):
-            print(f"Time Step: {n}. Time: {n*At}")
+            print(f"Time Step: {n}. Time: {n * At}")
             U0 = U[:, n]
             error_U = 1
-            previous_error_U = float('inf')
             k = 0
-            while (error_U > 0.5e-5) and (k < 20):
-                print(f"Iteration {k}. Error: {error_U}")
+            while (error_U > 1e-6) and (k < 20):
+                print(f"Iteration: {k}, Error: {error_U}")
+                
+                # Compute convection matrix using the current solution guess
                 C = self.compute_convection_matrix(U0)
+                
+                # Compute forcing vector
                 F = self.compute_forcing_vector(mu2)
+
+                # Form the system matrix A (Jacobian J) and right-hand side vector b
                 A = M + At * C + At * E * K
-
-                # Modify A for boundary conditions
-                A[0, :] = 0
-                A[0, 0] = 1
-
-                # Compute right-hand side vector b
                 b = M @ U[:, n] + At * F
 
-                # Modify b for boundary conditions
+                # Modify A and b for boundary conditions
+                A[0, :] = 0
+                A[0, 0] = 1
                 b[0] = uxa
 
+                # Compute the residual R
+                R = A @ U0 - b
+
                 if projection == "Galerkin":
-                    # Project the full-order matrices and vectors onto the reduced space using Galerkin projection
+                    # Galerkin projection
                     Ar = Phi.T @ A @ Phi
-                    br = Phi.T @ b
+                    br = Phi.T @ R
                 elif projection == "LSPG":
-                    # Project the full-order matrices and vectors onto the reduced space using LSPG projection
-                    Psi = A @ Phi
-                    Ar = Psi.T @ Psi
-                    br = Psi.T @ b
+                    # LSPG projection
+                    J_Phi = A @ Phi
+                    Ar = J_Phi.T @ J_Phi
+                    br = J_Phi.T @ R
                 else:
-                    # Raise an error if the projection method is not recognized
                     raise ValueError(f"Projection method '{projection}' is not available. Please use 'Galerkin' or 'LSPG'.")
 
-                    
+                # Solve the reduced-order system for the correction δq
+                delta_q = np.linalg.solve(Ar, -br)
 
-                # Solve the reduced-order system
-                Ur1 = np.linalg.solve(Ar, br)
+                # Update the reduced coordinates q
+                q = Phi.T @ U0 + delta_q
 
-                # Compute the error and update the solution
-                error_U = np.linalg.norm(Ur1 - Phi.T @ U0) / np.linalg.norm(Ur1)
+                # Compute the updated solution in the full-order space
+                U1 = Phi @ q
 
-                # Check if the change in error is very small
-                if abs(previous_error_U - error_U) < 1e-8:
-                    print("Warning: Did not converge. Stopped due to small change in error.")
-                    break
-
-                previous_error_U = error_U  # Update the previous error
-
-                U0 = Phi @ Ur1
+                # Compute the error to check for convergence
+                error_U = np.linalg.norm(delta_q) / np.linalg.norm(q)
+                
+                # Update the guess for the next iteration
+                U0 = U1
                 k += 1
 
-            # Update the full-order solution with the reduced-order solution
-            U[:, n + 1] = Phi @ Ur1
+            # Store the converged solution for this time step
+            U[:, n + 1] = U1
 
         return U
 

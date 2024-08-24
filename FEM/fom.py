@@ -25,8 +25,8 @@ if __name__ == "__main__":
     E = 0.01
 
     # Parameters
-    mu1 = 4.25
-    mu2 = 0.021
+    mu1 = 4.76
+    mu2 = 0.0182
 
     # Create an instance of the FEMBurgers class
     fem_burgers = FEMBurgers(X, T)
@@ -56,11 +56,13 @@ if __name__ == "__main__":
         return line,
 
     ani = FuncAnimation(fig, update, frames=nTimeSteps + 1, blit=True)
+    plt.show()
 
     # Save animation as GIF
-    gif_filename = f"simulation_mu1_{mu1:.2f}_mu2_{mu2:.4f}.gif"
-    ani.save(gif_filename, writer=PillowWriter(fps=10))
-    plt.close(fig)  # Close the figure to avoid displaying it
+    # gif_filename = f"simulation_mu1_{mu1:.2f}_mu2_{mu2:.4f}.gif"
+    # ani.save(gif_filename, writer=PillowWriter(fps=10))
+    # plt.close(fig)  # Close the figure to avoid displaying it
+    
 
 
 

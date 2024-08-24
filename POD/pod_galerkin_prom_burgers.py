@@ -46,7 +46,7 @@ if __name__ == "__main__":
     fem_burgers = FEMBurgers(X, T)
 
     # Load reduced basis (example, replace with actual basis)
-    tol = 1e-03
+    tol = 1e-04
     Phi = np.load(f"modes/U_modes_tol_{tol:.0e}.npy")
 
     # Solution using PROM
