@@ -8,7 +8,7 @@ def count_modes_in_clusters(cluster_bases_dir, n_clusters_list):
         num_clusters = 0
         for cluster_index in range(n_clusters):
             # Load the local basis for this cluster
-            basis_file = os.path.join(cluster_bases_dir, f'local_bases_cluster_{cluster_index}_nclusters_{n_clusters}.npy')
+            basis_file = os.path.join(cluster_bases_dir, f'clusters/local_bases_cluster_{cluster_index}_nclusters_{n_clusters}.npy')
             if os.path.exists(basis_file):
                 local_basis = np.load(basis_file)
                 num_modes = local_basis.shape[1]  # Number of columns corresponds to the number of modes
@@ -28,7 +28,7 @@ def count_modes_in_clusters(cluster_bases_dir, n_clusters_list):
 cluster_bases_dir = '.'  # Modify this path if needed
 
 # Define the list of cluster configurations you tested
-n_clusters_list = [10, 15, 18, 20, 25]
+n_clusters_list = [10, 15, 20, 25, 30, 35, 40, 45, 50]
 
 # Count and print the number of modes for each cluster in each clustering
 count_modes_in_clusters(cluster_bases_dir, n_clusters_list)
