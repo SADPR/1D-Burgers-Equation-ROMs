@@ -28,7 +28,7 @@ def count_modes_in_clusters(cluster_bases_dir, n_clusters_list):
 cluster_bases_dir = '.'  # Modify this path if needed
 
 # Define the list of cluster configurations you tested
-n_clusters_list = [10, 15, 20, 25, 30, 35, 40, 45, 50]
+n_clusters_list = [1, 2, 4, 6, 8, 10, 15, 20, 25, 30, 35, 40, 45, 50, 100]
 
 # Count and print the number of modes for each cluster in each clustering
 count_modes_in_clusters(cluster_bases_dir, n_clusters_list)
