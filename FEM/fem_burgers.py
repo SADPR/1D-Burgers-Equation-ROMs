@@ -463,7 +463,7 @@ class FEMBurgers:
 
         return torch.stack(jacobian, dim=1).squeeze(0)
 
-    def local_prom_burgers(self, At, nTimeSteps, u0, uxa, E, mu2, kmeans, local_bases, U_global, num_global_modes):
+    def local_prom_burgers_(self, At, nTimeSteps, u0, uxa, E, mu2, kmeans, local_bases, U_global, num_global_modes):
         m = len(self.X) - 1
 
         # Allocate memory for the solution matrix
@@ -530,3 +530,91 @@ class FEMBurgers:
             U[:, n + 1] = Phi @ Ur1
 
         return U
+    
+    from scipy.sparse import lil_matrix
+
+    def local_prom_burgers(self, At, nTimeSteps, u0, uxa, E, mu2, kmeans, local_bases, U_global, num_global_modes, projection="Galerkin"):
+        m = len(self.X) - 1
+
+        # Allocate memory for the solution matrix
+        U = np.zeros((m + 1, nTimeSteps + 1))
+
+        # Initial condition
+        U[:, 0] = u0
+
+        M = self.compute_mass_matrix()
+        K = self.compute_diffusion_matrix()
+
+        for n in range(nTimeSteps):
+            print(f"Time Step: {n}. Time: {n * At}")
+            U0 = U[:, n]
+            error_U = 1
+            k = 0
+            while (error_U > 1e-6) and (k < 20):
+                print(f"Iteration: {k}, Error: {error_U}")
+
+                # Determine the cluster for the current state
+                q_global_snapshot = (U_global[:, :num_global_modes]).T @ U0
+                cluster_id = kmeans.predict(q_global_snapshot.reshape(1, -1))[0]
+                Phi = local_bases[cluster_id]
+
+                # Compute convection matrix using the current solution guess
+                C = self.compute_convection_matrix(U0)
+
+                # Compute forcing vector
+                F = self.compute_forcing_vector(mu2)
+
+                # Form the system matrix A (Jacobian J) and right-hand side vector b
+                A = M + At * C + At * E * K
+
+                # Convert to LIL format to modify the structure
+                A = A.tolil()
+
+                # Modify A for boundary conditions
+                A[0, :] = 0
+                A[0, 0] = 1
+
+                # Convert back to CSC format after modifications
+                A = A.tocsc()
+
+                b = M @ U[:, n] + At * F
+
+                # Modify b for boundary conditions
+                b[0] = uxa
+
+                # Compute the residual R
+                R = A @ U0 - b
+
+                if projection == "Galerkin":
+                    # Galerkin projection
+                    Ar = Phi.T @ A @ Phi
+                    br = Phi.T @ R
+                elif projection == "LSPG":
+                    # LSPG projection
+                    J_Phi = A @ Phi
+                    Ar = J_Phi.T @ J_Phi
+                    br = J_Phi.T @ R
+                else:
+                    raise ValueError(f"Projection method '{projection}' is not available. Please use 'Galerkin' or 'LSPG'.")
+
+                # Solve the reduced-order system for the correction δq
+                delta_q = np.linalg.solve(Ar, -br)
+
+                # Update the reduced coordinates q
+                q = Phi.T @ U0 + delta_q
+
+                # Compute the updated solution in the full-order space
+                U1 = Phi @ q
+
+                # Compute the error to check for convergence
+                error_U = np.linalg.norm(delta_q) / np.linalg.norm(q)
+
+                # Update the guess for the next iteration
+                U0 = U1
+                k += 1
+
+            # Store the converged solution for this time step
+            U[:, n + 1] = U1
+
+        return U
+

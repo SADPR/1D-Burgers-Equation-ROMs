@@ -42,14 +42,28 @@ M_global, N_global = U_global.shape
 num_global_modes = get_number_of_singular_values_for_given_tolerance(M_global, N_global, S_global, tolerance)
 q_global = (U_global[:, :num_global_modes]).T @ all_snapshots
 
+# Save the global modes U_global in the 'clusters/' directory
+clusters_dir = 'clusters'
+if not os.path.exists(clusters_dir):
+    os.makedirs(clusters_dir)
+
+global_modes_filename = os.path.join(clusters_dir, f'U_global_modes_tol_{tolerance:.0e}.npy')
+np.save(global_modes_filename, U_global[:, :num_global_modes])
+
+print(f"Global modes U_global saved to {global_modes_filename}")
+
 # Test different numbers of clusters
-n_clusters_list = [1, 2, 4, 6, 8, 100]  # Example values; can be adjusted
+n_clusters_list = [20]  # Example values; can be adjusted
 best_n_clusters = None
 best_error = float('inf')
 
 for n_clusters in n_clusters_list:
     kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
     snapshot_labels = kmeans.fit_predict(q_global.T)
+
+    # Save the K-means model
+    kmeans_filename = os.path.join(clusters_dir, f'kmeans_model_{n_clusters}_clusters.pkl')
+    joblib.dump(kmeans, kmeans_filename)
 
     # Save cluster labels and centers
     np.save(f'clusters/cluster_labels_{n_clusters}.npy', snapshot_labels)
@@ -81,35 +95,23 @@ for n_clusters in n_clusters_list:
         num_local_modes = get_number_of_singular_values_for_given_tolerance(M_local, N_local, S_local, tolerance)
         local_bases[key] = U_local[:, :num_local_modes]
 
-        # Save the size of each cluster's basis
-        np.save(f'clusters/local_bases_cluster_{key}_nclusters_{n_clusters}.npy', local_bases[key])
+        # Save the local basis for each cluster
+        local_basis_filename = f'clusters/local_bases_cluster_{key}_nclusters_{n_clusters}.npy'
+        np.save(local_basis_filename, local_bases[key])
 
         # Compute the reconstruction error for this cluster
         reconstructed = U_local[:, :num_local_modes] @ np.diag(S_local[:num_local_modes]) @ VT_local[:num_local_modes, :]
         error = np.linalg.norm(clustered_snapshots[key] - reconstructed) / np.linalg.norm(clustered_snapshots[key])
         total_error += error
 
-        # Save the reconstruction error for each cluster
-        # np.save(f'clusters/reconstruction_error_cluster_{key}_nclusters_{n_clusters}.npy', error)
-
     # Average error over all clusters
     average_error = total_error / n_clusters
     print(f"Number of clusters: {n_clusters}, Average reconstruction error: {average_error}")
 
-    # Track the best number of clusters based on the lowest error
-    if average_error < best_error:
-        best_error = average_error
-        best_n_clusters = n_clusters
-        best_local_bases = local_bases
-        best_kmeans = kmeans
+    # Save the local bases for all clusters in one file
+    np.save(f'clusters/local_bases_overlap_{n_clusters}_clusters.npy', local_bases)
 
-# Save the best KMeans model, local bases, and global U matrix
-joblib.dump(best_kmeans, 'best_kmeans_model.pkl')
-np.save('best_local_bases.npy', best_local_bases)
-np.save('U_global.npy', U_global[:, :num_global_modes])
 
-print(f"Best number of clusters: {best_n_clusters}, with average error: {best_error}")
-print("Clustering and local basis computation with overlap completed.")
 
 
 
