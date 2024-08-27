@@ -122,8 +122,6 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             patience_counter = 0
-            # Save the best model
-            torch.save(model.state_dict(), f'best_dense_autoencoder_elu_latent_{latent_dim}.pth')
         else:
             patience_counter += 1
             if patience_counter >= patience:

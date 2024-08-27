@@ -37,12 +37,12 @@ def create_combined_gif(X, original_snapshot, autoencoder_reconstructed, nTimeSt
     ani = FuncAnimation(fig, update, frames=nTimeSteps + 1, blit=True)
 
     # Save animation as GIF
-    ani.save("ae_reconstruction.gif", writer=PillowWriter(fps=10))
+    ani.save(f"ae_reconstruction_latent_{latent_dim}.gif", writer=PillowWriter(fps=10))
 
     plt.show()
 
 if __name__ == '__main__':
-    latent_dim = 3
+    latent_dim = 16
     input_dim = 513
 
     # Load the trained autoencoder model
@@ -71,7 +71,7 @@ if __name__ == '__main__':
     reconstructed_snapshot = reconstructed_snapshot.numpy().T
 
     # Save the reconstructed snapshots
-    np.save('reconstructed_snapshots.npy', reconstructed_snapshot)
+    np.save(f'reconstructed_snapshots_latent_{latent_dim}.npy', reconstructed_snapshot)
 
     # Domain
     a = 0
