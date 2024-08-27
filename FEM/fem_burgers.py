@@ -6,6 +6,75 @@ import torch
 from torch.autograd import grad
 from scipy.sparse import lil_matrix
 
+def get_sym(qi):
+    ''' Auxiliary function to get the symmetric part of q kron q '''
+    size = qi.shape[0]
+    vec = []
+
+    for i in range(size):
+        for j in range(size):
+            if j >= i:
+                vec.append(qi[i]*qi[j])
+
+    return np.array(vec)
+
+def get_single_Q(modes, q):
+    ''' Populates Q row by row '''
+    k = int(modes*(modes+1)/2)
+    Q = np.empty(k)
+
+    Q = get_sym(q)
+
+    return Q
+
+def get_dQ_dq(modes, q):
+    """
+    Compute the derivative of the quadratic terms with respect to the reduced coordinates q_p.
+    This will give a matrix where each row corresponds to the derivative of a specific quadratic term
+    with respect to the components of q_p.
+    
+    Parameters:
+    - modes: int, number of modes (size of q_p).
+    - q: np.array, the vector q_p of reduced coordinates.
+
+    Returns:
+    - dQ_dq: np.array, the derivative of the quadratic terms with respect to q_p.
+    """
+    k = int(modes * (modes + 1) / 2)
+    dQ_dq = np.zeros((k, modes))
+    
+    index = 0
+    for i in range(modes):
+        for j in range(i, modes):
+            if i == j:
+                dQ_dq[index, i] = 2 * q[i]  # Derivative of q_i^2 w.r.t q_i
+            else:
+                dQ_dq[index, i] = q[j]  # Derivative of q_i * q_j w.r.t q_i
+                dQ_dq[index, j] = q[i]  # Derivative of q_i * q_j w.r.t q_j
+            index += 1
+
+    return dQ_dq
+
+def compute_derivative(U_p, H, q_p):
+    """
+    Compute the derivative of the quadratic manifold approximation with respect to q_p.
+
+    Parameters:
+    - U_p: np.array, the linear basis matrix (Phi_p).
+    - H: np.array, the matrix H capturing the effect of secondary modes.
+    - q_p: np.array, the vector of reduced coordinates in the primary space.
+
+    Returns:
+    - derivative: np.array, the derivative of the quadratic manifold approximation.
+    """
+    modes = len(q_p)
+    dQ_dq = get_dQ_dq(modes, q_p)
+    
+    # The derivative of the quadratic manifold approximation
+    derivative = U_p + H @ dQ_dq
+
+    return derivative
+
 class FEMBurgers:
     def __init__(self, X, T):
         self.X = X
@@ -462,74 +531,6 @@ class FEMBurgers:
             jacobian.append(torch.autograd.grad(decoded, q, grad_outputs=grad_outputs, create_graph=True)[0])
 
         return torch.stack(jacobian, dim=1).squeeze(0)
-
-    def local_prom_burgers_(self, At, nTimeSteps, u0, uxa, E, mu2, kmeans, local_bases, U_global, num_global_modes):
-        m = len(self.X) - 1
-
-        # Allocate memory for the solution matrix
-        U = np.zeros((m + 1, nTimeSteps + 1))
-
-        # Initial condition
-        U[:, 0] = u0
-
-        M = self.compute_mass_matrix()
-        K = self.compute_diffusion_matrix()
-
-        for n in range(nTimeSteps):
-            print(f"Time Step: {n}. Time: {n*At}")
-            U0 = U[:, n]
-            error_U = 1
-            previous_error_U = float('inf')
-            k = 0
-            while (error_U > 0.5e-5) and (k < 20):
-                print(f"Iteration {k}. Error: {error_U}")
-
-                # Determine the cluster for the current state
-                q_global_snapshot = (U_global[:, :num_global_modes]).T @ U0
-                cluster_id = kmeans.predict(q_global_snapshot.reshape(1, -1))[0]
-                Phi = local_bases[cluster_id]
-
-                C = self.compute_convection_matrix(U0)
-                F = self.compute_forcing_vector(mu2)
-                A = lil_matrix(M + At * C + At * E * K)  # Convert to lil_matrix
-
-                # Modify A for boundary conditions
-                A[0, :] = 0
-                A[0, 0] = 1
-
-                # Convert back to original format if necessary
-                A = A.tocsc()
-
-                # Compute right-hand side vector b
-                b = M @ U[:, n] + At * F
-
-                # Modify b for boundary conditions
-                b[0] = uxa
-
-                # Project the full-order matrices and vectors onto the reduced space
-                Ar = Phi.T @ A @ Phi
-                br = Phi.T @ b
-
-                # Solve the reduced-order system
-                Ur1 = np.linalg.solve(Ar, br)
-
-                # Compute the error and update the solution
-                error_U = np.linalg.norm(Ur1 - Phi.T @ U0) / np.linalg.norm(Ur1)
-
-                # Check if the change in error is very small
-                if abs(previous_error_U - error_U) < 1e-8:
-                    print("Warning: Did not converge. Stopped due to small change in error.")
-                    break
-
-                previous_error_U = error_U  # Update the previous error
-
-                U0 = Phi @ Ur1
-                k += 1
-
-            # Update the full-order solution with the reduced-order solution
-            U[:, n + 1] = Phi @ Ur1
-
-        return U
     
     from scipy.sparse import lil_matrix
 
@@ -609,6 +610,83 @@ class FEMBurgers:
                 # Compute the error to check for convergence
                 error_U = np.linalg.norm(delta_q) / np.linalg.norm(q)
 
+                # Update the guess for the next iteration
+                U0 = U1
+                k += 1
+
+            # Store the converged solution for this time step
+            U[:, n + 1] = U1
+
+        return U
+
+    def pod_quadratic_manifold(self, At, nTimeSteps, u0, uxa, E, mu2, Phi_p, H, num_modes, projection="LSPG"):
+        m = len(self.X) - 1
+
+        # Allocate memory for the solution matrix
+        U = np.zeros((m + 1, nTimeSteps + 1))
+
+        # Initial condition
+        U[:, 0] = u0
+
+        M = self.compute_mass_matrix()
+        K = self.compute_diffusion_matrix()
+
+        for n in range(nTimeSteps):
+            print(f"Time Step: {n}. Time: {n * At}")
+            U0 = U[:, n]
+            error_U = 1
+            k = 0
+            while (error_U > 1e-6) and (k < 20):
+                print(f"Iteration: {k}, Error: {error_U}")
+                
+                # Compute convection matrix using the current solution guess
+                C = self.compute_convection_matrix(U0)
+                
+                # Compute forcing vector
+                F = self.compute_forcing_vector(mu2)
+
+                # Form the system matrix A (Jacobian J) and right-hand side vector b
+                A = M + At * C + At * E * K
+                b = M @ U[:, n] + At * F
+
+                # Modify A and b for boundary conditions
+                A[0, :] = 0
+                A[0, 0] = 1
+                b[0] = uxa
+
+                # Compute the residual R
+                R = A @ U0 - b
+
+                # Compute q_p (linear reduced coordinates)
+                q_p = Phi_p.T @ U0
+
+                # Compute the derivative of the quadratic manifold approximation
+                dD_u_dq = compute_derivative(Phi_p, H, q_p)
+
+                if projection == "Galerkin":
+                    # Galerkin projection
+                    Ar = dD_u_dq.T @ A @ dD_u_dq
+                    br = dD_u_dq.T @ (A @ U0 - b)
+                elif projection == "LSPG":
+                    # LSPG projection
+                    J_dD_u_dq = A @ dD_u_dq
+                    Ar = J_dD_u_dq.T @ J_dD_u_dq
+                    br = J_dD_u_dq.T @ R
+                else:
+                    raise ValueError(f"Projection method '{projection}' is not available. Please use 'Galerkin' or 'LSPG'.")
+
+                # Solve the reduced-order system for the correction δq_p
+                delta_qp = np.linalg.solve(Ar, -br)
+
+                # Update the reduced coordinates q_p
+                q_p += delta_qp
+
+                # Compute the updated solution in the full-order space
+                U1 = Phi_p @ q_p + H @ get_single_Q(num_modes, q_p)
+
+                # Compute the error to check for convergence
+                error_U = np.linalg.norm(delta_qp) / np.linalg.norm(q_p)
+                
                 # Update the guess for the next iteration
                 U0 = U1
                 k += 1
