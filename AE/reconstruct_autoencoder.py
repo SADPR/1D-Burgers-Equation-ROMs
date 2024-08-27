@@ -42,11 +42,11 @@ def create_combined_gif(X, original_snapshot, autoencoder_reconstructed, nTimeSt
     plt.show()
 
 if __name__ == '__main__':
-    latent_dim = 28
+    latent_dim = 3
     input_dim = 513
 
     # Load the trained autoencoder model
-    autoencoder_model = torch.load(f'best_dense_autoencoder_elu_latent_{latent_dim}.pth')
+    autoencoder_model = torch.load(f'dense_autoencoder_complete_latent_{latent_dim}.pth')
     autoencoder_model.eval()
 
     # Load the mean and std values

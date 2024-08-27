@@ -18,10 +18,14 @@ class DenseAutoencoder(nn.Module):
             nn.ELU(),
             nn.Linear(128, 64),
             nn.ELU(),
-            nn.Linear(64, latent_dim),
+            nn.Linear(64, 32),
+            nn.ELU(),
+            nn.Linear(32, latent_dim),
         )
         self.decoder = nn.Sequential(
-            nn.Linear(latent_dim, 64),
+            nn.Linear(latent_dim, 32),
+            nn.ELU(),
+            nn.Linear(32, 64),
             nn.ELU(),
             nn.Linear(64, 128),
             nn.ELU(),
@@ -70,7 +74,7 @@ val_loader = DataLoader(val_dataset, batch_size=64, shuffle=False)
 
 # Initialize the model, loss function, and optimizer
 input_dim = all_snapshots.shape[1]
-latent_dim = 28  # Set the latent dimension here
+latent_dim = 3  # Set the latent dimension here
 model = DenseAutoencoder(input_dim, latent_dim)
 criterion = nn.MSELoss()
 optimizer = optim.Adam(model.parameters(), lr=1e-3)
