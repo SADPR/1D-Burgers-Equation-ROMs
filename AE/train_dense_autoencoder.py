@@ -52,6 +52,10 @@ all_snapshots = np.hstack(all_snapshots)  # Ensure shape is (248000, 513)
 mean = np.mean(all_snapshots)
 std = np.std(all_snapshots)
 
+# Save the mean and standard deviation for future use
+np.save('data_mean.npy', mean)
+np.save('data_std.npy', std)
+
 # Convert to PyTorch tensors and normalize using PyTorch's operations
 all_snapshots = torch.tensor(all_snapshots.T, dtype=torch.float32)  # Transpose to (248000, 513)
 all_snapshots = (all_snapshots - mean) / std
@@ -66,7 +70,7 @@ val_loader = DataLoader(val_dataset, batch_size=64, shuffle=False)
 
 # Initialize the model, loss function, and optimizer
 input_dim = all_snapshots.shape[1]
-latent_dim = 16
+latent_dim = 28  # Set the latent dimension here
 model = DenseAutoencoder(input_dim, latent_dim)
 criterion = nn.MSELoss()
 optimizer = optim.Adam(model.parameters(), lr=1e-3)
@@ -76,6 +80,10 @@ scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0
 def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler, num_epochs=50, patience=10):
     best_val_loss = float('inf')
     patience_counter = 0
+
+    # Initialize lists to track losses
+    train_losses = []
+    val_losses = []
 
     for epoch in range(num_epochs):
         model.train()
@@ -89,6 +97,7 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
             train_loss += loss.item() * data.size(0)
 
         train_loss /= len(train_loader.dataset)
+        train_losses.append(train_loss)
 
         model.eval()
         val_loss = 0.0
@@ -99,6 +108,7 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
                 val_loss += loss.item() * data.size(0)
 
         val_loss /= len(val_loader.dataset)
+        val_losses.append(val_loss)
 
         scheduler.step(val_loss)
 
@@ -109,17 +119,22 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
             best_val_loss = val_loss
             patience_counter = 0
             # Save the best model
-            torch.save(model.state_dict(), 'best_dense_autoencoder_elu.pth')
+            torch.save(model.state_dict(), f'best_dense_autoencoder_elu_latent_{latent_dim}.pth')
         else:
             patience_counter += 1
             if patience_counter >= patience:
                 print("Early stopping")
                 break
 
-# Train the model
-train_model(model, train_loader, val_loader, criterion, optimizer, scheduler, num_epochs=50, patience=10)
+    # Save the train and validation losses
+    np.save(f'train_losses_latent_{latent_dim}.npy', np.array(train_losses))
+    np.save(f'val_losses_latent_{latent_dim}.npy', np.array(val_losses))
 
-# Save the trained model
-torch.save(model, 'dense_autoencoder_complete.pth')
+# Train the model
+train_model(model, train_loader, val_loader, criterion, optimizer, scheduler, num_epochs=100, patience=10)
+
+# Save the complete trained model
+torch.save(model, f'dense_autoencoder_complete_latent_{latent_dim}.pth')
+
 
 
