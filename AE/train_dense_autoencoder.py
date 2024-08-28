@@ -52,17 +52,17 @@ for file in files:
 
 all_snapshots = np.hstack(all_snapshots)  # Ensure shape is (248000, 513)
 
-# Compute the mean and standard deviation for normalization
-mean = np.mean(all_snapshots)
-std = np.std(all_snapshots)
+# # Compute the mean and standard deviation for normalization
+# mean = np.mean(all_snapshots)
+# std = np.std(all_snapshots)
 
-# Save the mean and standard deviation for future use
-np.save('data_mean.npy', mean)
-np.save('data_std.npy', std)
+# # Save the mean and standard deviation for future use
+# np.save('data_mean.npy', mean)
+# np.save('data_std.npy', std)
 
 # Convert to PyTorch tensors and normalize using PyTorch's operations
 all_snapshots = torch.tensor(all_snapshots.T, dtype=torch.float32)  # Transpose to (248000, 513)
-all_snapshots = (all_snapshots - mean) / std
+# all_snapshots = (all_snapshots - mean) / std
 
 # Create dataset and dataloaders
 dataset = TensorDataset(all_snapshots, all_snapshots)
@@ -116,7 +116,7 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
 
         scheduler.step(val_loss)
 
-        print(f'Epoch [{epoch+1}/{num_epochs}], Train Loss: {train_loss:.6f}, Val Loss: {val_loss:.6f}')
+        print(f'Epoch [{epoch+1}/{num_epochs}], Train Loss: {train_loss:.8f}, Val Loss: {val_loss:.8f}')
 
         # Check for early stopping
         if val_loss < best_val_loss:
@@ -133,7 +133,7 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
     np.save(f'val_losses_latent_{latent_dim}.npy', np.array(val_losses))
 
 # Train the model
-train_model(model, train_loader, val_loader, criterion, optimizer, scheduler, num_epochs=100, patience=10)
+train_model(model, train_loader, val_loader, criterion, optimizer, scheduler, num_epochs=200, patience=10)
 
 # Save the complete trained model
 torch.save(model, f'dense_autoencoder_complete_latent_{latent_dim}.pth')
