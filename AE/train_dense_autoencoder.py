@@ -74,7 +74,7 @@ val_loader = DataLoader(val_dataset, batch_size=64, shuffle=False)
 
 # Initialize the model, loss function, and optimizer
 input_dim = all_snapshots.shape[1]
-latent_dim = 3  # Set the latent dimension here
+latent_dim = 28  # Set the latent dimension here
 model = DenseAutoencoder(input_dim, latent_dim)
 criterion = nn.MSELoss()
 optimizer = optim.Adam(model.parameters(), lr=1e-3)
