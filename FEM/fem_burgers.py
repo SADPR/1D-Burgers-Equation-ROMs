@@ -5,6 +5,7 @@ import scipy.sparse.linalg as spla
 import torch
 from torch.autograd import grad
 from scipy.sparse import lil_matrix
+import matplotlib.pyplot as plt
 
 def get_sym(qi):
     ''' Auxiliary function to get the symmetric part of q kron q '''
@@ -470,58 +471,132 @@ class FEMBurgers:
         for n in range(nTimeSteps):
             print(f"Time Step: {n}. Time: {n * At}")
             U0 = U[:, n]
-            U0_normalized = (torch.tensor(U0, dtype=torch.float32) - mean) / std
-            q0 = model.encoder(U0_normalized.unsqueeze(0)).detach().numpy().squeeze()
 
-            error_U = 1
-            previous_error_U = float('inf')
-            k = 0
-            while (error_U > 0.5e-5) and (k < 20):
-                print(f"Iteration {k}. Error: {error_U}")
+            if (n % 4) < 3:
+                print("FOM")
+                # Full-Order Model (FOM) approach for the first three time steps in each sequence of four
+                error_U = 1
+                k = 0
+                while (error_U > 1e-6) and (k < 20):
+                    print(f"FOM Iteration {k}. Error: {error_U}")
+
+                    # Compute convection matrix using the current solution guess
+                    C = self.compute_convection_matrix(U0)
+
+                    # Compute forcing vector
+                    F = self.compute_forcing_vector(mu2)
+
+                    # Form the system matrix A and right-hand side vector b
+                    A = M + At * C + At * E * K
+                    b = M @ U[:, n] + At * F
+
+                    # Modify A and b for boundary conditions
+                    A[0, :] = 0
+                    A[0, 0] = 1
+                    b[0] = uxa
+
+                    # Solve the full-order system
+                    U1 = spla.spsolve(A, b)
+
+                    # Compute the error to check for convergence
+                    error_U = np.linalg.norm(U1 - U0) / np.linalg.norm(U1)
+
+                    # Update the guess for the next iteration
+                    U0 = U1
+                    k += 1
+                
+                # Plot the results for this time step
+                plt.figure()
+                plt.plot(self.X, U1, label=f'Time step {n + 1} (FOM)', color='red')
+                plt.xlabel('x')
+                plt.ylabel('u')
+                plt.xlim(0,3)
+                plt.title(f'FOM Solution at Time Step {n + 1}')
+                plt.legend()
+                plt.grid(True)
+                plt.show()
+
+                # Store the converged solution for this time step
+                U[:, n + 1] = U1
+
+            else:
+                print("Autoencoder")
+                # Autoencoder-based PROM approach for every fourth time step in each sequence of four
+                # Normalize the initial condition before encoding
                 U0_normalized = (torch.tensor(U0, dtype=torch.float32) - mean) / std
-                q0 = model.encoder(U0_normalized.unsqueeze(0)).squeeze()
+                q0 = model.encoder(U0_normalized.unsqueeze(0)).detach().numpy().squeeze()
 
-                C = self.compute_convection_matrix(U0)
-                F = self.compute_forcing_vector(mu2)
-                A = M + At * C + At * E * K
+                error_U = 1
+                k = 0
+                while (error_U > 0.5e-5) and (k < 100):
+                    print(f"PROM Iteration {k}. Error: {error_U}")
 
-                # Modify A for boundary conditions
-                A[0, :] = 0
-                A[0, 0] = 1
+                    # Normalize the current estimate before encoding
+                    U0_normalized = (torch.tensor(U0, dtype=torch.float32) - mean) / std
+                    q0 = model.encoder(U0_normalized.unsqueeze(0)).squeeze()
 
-                # Compute right-hand side vector b
-                b = M @ U[:, n] + At * F
+                    C = self.compute_convection_matrix(U0)
+                    F = self.compute_forcing_vector(mu2)
+                    A = M + At * C + At * E * K
 
-                # Modify b for boundary conditions
-                b[0] = uxa
+                    # Convert to LIL format to modify the structure
+                    A = A.tolil()
 
-                # Compute the Jacobian of the decoder at q0
-                jacobian = self.compute_jacobian(model.decoder, q0).detach().numpy().T
+                    # Modify A for boundary conditions
+                    A[0, :] = 0
+                    A[0, 0] = 1
 
-                # Project the full-order matrices and vectors onto the reduced space
-                jacobian_pseudo_inv = np.linalg.pinv(jacobian)
-                Ar = jacobian_pseudo_inv @ A @ jacobian
-                br = jacobian_pseudo_inv @ b
+                    # Compute right-hand side vector b
+                    b = M @ U[:, n] + At * F
 
-                # Solve the reduced-order system
-                dq = np.linalg.solve(Ar, br)
+                    # Modify b for boundary conditions
+                    b[0] = uxa
 
-                # Update q0 and decode
-                q1 = q0 + torch.tensor(dq, dtype=torch.float32)
-                U1_normalized = model.decoder(torch.tensor(q1, dtype=torch.float32)).detach().numpy().squeeze()
-                U1 = U1_normalized * std + mean
+                    # Compute the Jacobian of the decoder at q0
+                    jacobian = self.compute_jacobian(model.decoder, q0).detach().numpy().T
 
-                # Compute the error and update the solution
-                error_U = np.linalg.norm(U1 - U0) / np.linalg.norm(U1)
-                U0 = U1
-                k += 1
+                    # Project the full-order matrices and vectors onto the reduced space
+                    jacobian_pseudo_inv = np.linalg.pinv(jacobian)
+                    Ar = jacobian_pseudo_inv @ A @ jacobian
+                    br = jacobian_pseudo_inv @ b
 
-            U[:, n + 1] = U1
+                    # Solve the reduced-order system
+                    q = np.linalg.solve(Ar, br)
+
+                    # Decode
+                    U1_normalized = model.decoder(torch.tensor(q, dtype=torch.float32)).detach().numpy().squeeze()
+                        
+                    # Denormalize the solution
+                    U1 = U1_normalized * std + mean
+
+                    # Compute the error and update the solution
+                    error_U = np.linalg.norm(U1 - U0) / np.linalg.norm(U1)
+                    U0 = U1
+                    k += 1
+
+                # Plot the results for this time step
+                plt.figure()
+                plt.plot(self.X, U1, label=f'Time step {n + 1} (PROM)', color='red')
+                plt.xlabel('x')
+                plt.ylabel('u')
+                plt.xlim(0,3)
+                plt.title(f'PROM Solution at Time Step {n + 1}')
+                plt.legend()
+                plt.grid(True)
+                plt.show()
+
+                # Store the converged solution for this time step
+                U[:, n + 1] = U1
 
         return U
 
+
+
+
     def compute_jacobian(self, decoder, q):
-        q = torch.tensor(q, requires_grad=True)
+        # Correctly create a tensor from q with requires_grad=True
+        q = q.clone().detach().requires_grad_(True)
+        
         decoded = decoder(q.unsqueeze(0))
         jacobian = []
 
