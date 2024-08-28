@@ -42,7 +42,7 @@ def create_combined_gif(X, original_snapshot, autoencoder_reconstructed, nTimeSt
     plt.show()
 
 if __name__ == '__main__':
-    latent_dim = 16
+    latent_dim = 28
     input_dim = 513
 
     # Load the trained autoencoder model

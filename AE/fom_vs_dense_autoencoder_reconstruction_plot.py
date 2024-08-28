@@ -27,7 +27,7 @@ def plot_reconstruction_comparison():
     snapshot = np.load(snapshot_file)
 
     # Load the Dense Autoencoder reconstructed data
-    reconstructed_snapshots_ae = np.load("reconstructed_snapshots_latent_16.npy")
+    reconstructed_snapshots_ae = np.load("reconstructed_snapshots_latent_3.npy")
 
     # Calculate and print L2 norm errors over the entire matrices
     l2_error_ae = compute_l2_norm_error(snapshot, reconstructed_snapshots_ae)
