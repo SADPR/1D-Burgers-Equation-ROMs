@@ -49,9 +49,9 @@ if __name__ == '__main__':
     autoencoder_model = torch.load(f'dense_autoencoder_complete_latent_{latent_dim}.pth')
     autoencoder_model.eval()
 
-    # Load the mean and std values
-    mean = np.load('data_mean.npy')
-    std = np.load('data_std.npy')
+    # # Load the mean and std values
+    # mean = np.load('data_mean.npy')
+    # std = np.load('data_std.npy')
 
     # Load a specific snapshot for reconstruction
     snapshot_file = '../FEM/training_data/simulation_mu1_4.76_mu2_0.0182.npy'
@@ -59,12 +59,12 @@ if __name__ == '__main__':
 
     # Convert to PyTorch tensor and normalize
     snapshot = torch.tensor(snapshot.T, dtype=torch.float32)  # Transpose to match input dimension
-    snapshot_normalized = (snapshot - mean) / std
+    # snapshot_normalized = (snapshot - mean) / std
 
     # Reconstruct the snapshot using the autoencoder
     with torch.no_grad():
-        reconstructed_snapshot_normalized = autoencoder_model(snapshot_normalized)
-        reconstructed_snapshot = reconstructed_snapshot_normalized * std + mean
+        reconstructed_snapshot_normalized = autoencoder_model(snapshot)
+        reconstructed_snapshot = reconstructed_snapshot_normalized #* std + mean
 
     # Convert back to numpy array for plotting
     snapshot = snapshot.numpy().T

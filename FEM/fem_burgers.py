@@ -455,7 +455,7 @@ class FEMBurgers:
 
         return U
 
-    def ae_prom(self, At, nTimeSteps, u0, uxa, E, mu2, model, mean, std):
+    def ae_prom(self, At, nTimeSteps, u0, uxa, E, mu2, model):
         m = len(self.X) - 1
         latent_dim = model.encoder[-1].out_features
 
@@ -472,7 +472,7 @@ class FEMBurgers:
             print(f"Time Step: {n}. Time: {n * At}")
             U0 = U[:, n]
 
-            if (n % 4) < 3:
+            if (n % 11) < 10:
                 print("FOM")
                 # Full-Order Model (FOM) approach for the first three time steps in each sequence of four
                 error_U = 1
@@ -506,15 +506,15 @@ class FEMBurgers:
                     k += 1
                 
                 # Plot the results for this time step
-                plt.figure()
-                plt.plot(self.X, U1, label=f'Time step {n + 1} (FOM)', color='red')
-                plt.xlabel('x')
-                plt.ylabel('u')
-                plt.xlim(0,3)
-                plt.title(f'FOM Solution at Time Step {n + 1}')
-                plt.legend()
-                plt.grid(True)
-                plt.show()
+                # plt.figure()
+                # plt.plot(self.X, U1, label=f'Time step {n + 1} (FOM)', color='red')
+                # plt.xlabel('x')
+                # plt.ylabel('u')
+                # plt.xlim(0,3)
+                # plt.title(f'FOM Solution at Time Step {n + 1}')
+                # plt.legend()
+                # plt.grid(True)
+                # plt.show()
 
                 # Store the converged solution for this time step
                 U[:, n + 1] = U1
@@ -523,16 +523,17 @@ class FEMBurgers:
                 print("Autoencoder")
                 # Autoencoder-based PROM approach for every fourth time step in each sequence of four
                 # Normalize the initial condition before encoding
-                U0_normalized = (torch.tensor(U0, dtype=torch.float32) - mean) / std
+                U0_normalized = torch.tensor(U0, dtype=torch.float32) #(torch.tensor(U0, dtype=torch.float32) - mean) / std
                 q0 = model.encoder(U0_normalized.unsqueeze(0)).detach().numpy().squeeze()
+
 
                 error_U = 1
                 k = 0
-                while (error_U > 0.5e-5) and (k < 100):
+                while (error_U > 1e-6) and (k < 100):
                     print(f"PROM Iteration {k}. Error: {error_U}")
 
                     # Normalize the current estimate before encoding
-                    U0_normalized = (torch.tensor(U0, dtype=torch.float32) - mean) / std
+                    U0_normalized = torch.tensor(U0, dtype=torch.float32) #(torch.tensor(U0, dtype=torch.float32) - mean) / std
                     q0 = model.encoder(U0_normalized.unsqueeze(0)).squeeze()
 
                     C = self.compute_convection_matrix(U0)
@@ -551,13 +552,15 @@ class FEMBurgers:
 
                     # Modify b for boundary conditions
                     b[0] = uxa
+                    
+                    if k==0:
+                        # Compute the Jacobian of the decoder at q0
+                        jacobian = self.compute_jacobian(model.decoder, q0).detach().numpy().T
 
-                    # Compute the Jacobian of the decoder at q0
-                    jacobian = self.compute_jacobian(model.decoder, q0).detach().numpy().T
+                        # Project the full-order matrices and vectors onto the reduced space
+                        jacobian_pseudo_inv = np.linalg.pinv(jacobian.T)
 
-                    # Project the full-order matrices and vectors onto the reduced space
-                    jacobian_pseudo_inv = np.linalg.pinv(jacobian)
-                    Ar = jacobian_pseudo_inv @ A @ jacobian
+                    Ar = jacobian_pseudo_inv @ A @ jacobian.T
                     br = jacobian_pseudo_inv @ b
 
                     # Solve the reduced-order system
@@ -567,7 +570,17 @@ class FEMBurgers:
                     U1_normalized = model.decoder(torch.tensor(q, dtype=torch.float32)).detach().numpy().squeeze()
                         
                     # Denormalize the solution
-                    U1 = U1_normalized * std + mean
+                    U1 = U1_normalized #* std + mean
+
+                    plt.figure()
+                    plt.plot(self.X, U1_normalized, label=f'AE', color='blue')
+                    plt.xlabel('x')
+                    plt.ylabel('u')
+                    plt.xlim(0,3)
+                    plt.title(f'AE decoded initial solution')
+                    plt.legend()
+                    plt.grid(True)
+                    plt.show()
 
                     # Compute the error and update the solution
                     error_U = np.linalg.norm(U1 - U0) / np.linalg.norm(U1)
@@ -590,22 +603,46 @@ class FEMBurgers:
 
         return U
 
-
-
-
     def compute_jacobian(self, decoder, q):
-        # Correctly create a tensor from q with requires_grad=True
+        # Ensure q requires gradients
         q = q.clone().detach().requires_grad_(True)
-        
+
+        # Forward pass through the decoder
         decoded = decoder(q.unsqueeze(0))
+
+        # Plot the results for this time step
+        plt.figure()
+        plt.plot(self.X, decoded.detach().numpy().T, label=f'AE', color='blue')
+        plt.xlabel('x')
+        plt.ylabel('u')
+        plt.xlim(0,3)
+        plt.title(f'AE decoded initial solution')
+        plt.legend()
+        plt.grid(True)
+        plt.show()
+
+        # Initialize an empty list to store the gradients
         jacobian = []
 
-        for i in range(decoded.shape[1]):
-            grad_outputs = torch.zeros_like(decoded)
-            grad_outputs[0, i] = 1
-            jacobian.append(torch.autograd.grad(decoded, q, grad_outputs=grad_outputs, create_graph=True)[0])
+        # Loop over each element of the decoded output
+        for i in range(decoded.shape[1]):  # Assuming decoded is of shape [1, output_dim]
+            # Zero the gradients
+            if q.grad is not None:
+                q.grad.zero_()
 
-        return torch.stack(jacobian, dim=1).squeeze(0)
+            # Compute the gradient of the i-th element with respect to the input q
+            grad_output = torch.zeros_like(decoded)
+            grad_output[0, i] = 1  # We set the i-th element to 1 to get the gradient w.r.t. q
+            grad_i = torch.autograd.grad(decoded, q, grad_outputs=grad_output, retain_graph=True)[0]
+            
+            # Append the gradient to the list
+            jacobian.append(grad_i)
+
+        # Stack the list of gradients to form the Jacobian matrix
+        jacobian = torch.stack(jacobian, dim=0).squeeze(1)
+
+        return jacobian
+
     
     from scipy.sparse import lil_matrix
 

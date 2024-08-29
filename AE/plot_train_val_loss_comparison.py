@@ -12,7 +12,7 @@ def load_losses(latent_dim):
     return train_losses, val_losses
 
 # Load the losses for each latent dimension
-latent_dims = [3, 16, 28]
+latent_dims = [28]
 train_losses = []
 val_losses = []
 

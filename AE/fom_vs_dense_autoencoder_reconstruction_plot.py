@@ -19,15 +19,15 @@ def plot_reconstruction_comparison():
 
     # Time discretization
     At = 0.07
-    times_of_interest = [7, 14, 21]  # seconds
-    time_indices = [int(t / At) for t in times_of_interest]
+    times_of_interest = [0.07, 0.14, 0.21, 0.28]  # seconds
+    time_indices = [int(round(t / At)) for t in times_of_interest]
 
     # Load the FOM snapshot data
     snapshot_file = '../FEM/training_data/simulation_mu1_4.76_mu2_0.0182.npy'
     snapshot = np.load(snapshot_file)
 
     # Load the Dense Autoencoder reconstructed data
-    reconstructed_snapshots_ae = np.load("reconstructed_snapshots_latent_3.npy")
+    reconstructed_snapshots_ae = np.load("reconstructed_snapshots_latent_28.npy")
 
     # Calculate and print L2 norm errors over the entire matrices
     l2_error_ae = compute_l2_norm_error(snapshot, reconstructed_snapshots_ae)
@@ -51,7 +51,7 @@ def plot_reconstruction_comparison():
     plt.xlabel(r'$x$')
     plt.ylabel(r'$u$')
     plt.ylim(0, 7)
-    plt.xlim(0, 100)
+    plt.xlim(0, 3)
     plt.legend(loc='upper right')
     plt.grid(True)
 
