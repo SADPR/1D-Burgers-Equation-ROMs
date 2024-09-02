@@ -384,6 +384,77 @@ class FEMBurgers:
 
         return U
     
+    def fom_burgers_dirichlet(self, At, nTimeSteps, u0, mu1, E, mu2):
+        m = len(self.X) - 1
+
+        # Allocate memory for the solution matrix
+        U = np.zeros((m + 1, nTimeSteps + 1))
+
+        # Initial condition
+        U[:, 0] = u0
+
+        M = self.compute_mass_matrix()
+        K = self.compute_diffusion_matrix()
+
+        for n in range(nTimeSteps):
+            print(f"Time Step: {n}. Time: {n * At}")
+            U0 = U[:, n]
+            error_U = 1
+            k = 0
+            while (error_U > 1e-6) and (k < 20):
+                print(f"Iteration: {k}, Error: {error_U}")
+                
+                # Compute convection matrix using the current solution guess
+                C = self.compute_convection_matrix(U0)
+                
+                # Compute forcing vector
+                F = self.compute_forcing_vector(mu2)
+
+                # Form the system matrix A
+                A = M + At * C + At * E * K
+
+                # Modify A for boundary conditions
+                A[0, :] = 0
+                A[0, 0] = 1
+
+                # Compute the right-hand side vector b
+                b = M @ U[:, n] + At * F
+
+                # Modify A for boundary conditions
+                A[0, :] = 0
+                A[0, 0] = 1
+
+                # Modify b for boundary conditions
+                b[0] = mu1
+
+                # Adjust b[1] for the influence of u1*
+                b[1] -= A[1, 0] * mu1  # Subtract the effect of K_{21}^1 * u1* from b[1]
+
+                # Ensure A[1, 0] is also zeroed out if A[1, 0] was non-zero:
+                A[1, 0] = 0
+
+
+                # Compute the residual R
+                R = A @ U0 - b
+
+                # Solve the linear system J * δU = -R
+                delta_U = spla.spsolve(A, -R)
+
+                # Update the solution using the correction term
+                U1 = U0 + delta_U
+
+                # Compute the error to check for convergence
+                error_U = np.linalg.norm(delta_U) / np.linalg.norm(U1)
+                
+                # Update the guess for the next iteration
+                U0 = U1
+                k += 1
+
+            # Store the converged solution for this time step
+            U[:, n + 1] = U1
+
+        return U
+    
     def pod_prom_burgers(self, At, nTimeSteps, u0, uxa, E, mu2, Phi, projection="Galerkin"):
         m = len(self.X) - 1
 
@@ -454,6 +525,7 @@ class FEMBurgers:
             U[:, n + 1] = U1
 
         return U
+
 
     def ae_prom(self, At, nTimeSteps, u0, uxa, E, mu2, model):
         m = len(self.X) - 1
@@ -809,6 +881,9 @@ class FEMBurgers:
         return U
 
     def pod_ann_prom(self, At, nTimeSteps, u0, uxa, E, mu2, U_p, U_s, model):
+
+        original_data = np.load(f"../FEM/training_data/simulation_mu1_{uxa:.2f}_mu2_{mu2:.4f}.npy")
+        reconstruction = U_p@(U_p.T@original_data)
         m = len(self.X) - 1
 
         # Allocate memory for the solution matrix
@@ -825,7 +900,7 @@ class FEMBurgers:
             U0 = U[:, n]
 
             # if (n % 11) < 10:
-            if n==0:
+            if n<8:
                 print("FOM")
                 # Full-Order Model (FOM) approach for the first three time steps in each sequence of four
                 error_U = 1
@@ -879,7 +954,6 @@ class FEMBurgers:
                 error_U = 1
                 k = 0
                 while (error_U > 1e-6) and (k < 100):
-                    print(f"PROM Iteration {k}. Error: {error_U}")
 
                     C = self.compute_convection_matrix(U0)
                     F = self.compute_forcing_vector(mu2)
@@ -898,21 +972,22 @@ class FEMBurgers:
                     # Modify b for boundary conditions
                     b[0] = uxa
 
-                    # # if k == 0:
-                    # # Compute the ANN correction term based on the reduced coordinates q_p
-                    # q_p_tensor = torch.tensor(q_p, dtype=torch.float32).unsqueeze(0)
+                    # if k == 0:
+                    # Compute the ANN correction term based on the reduced coordinates q_p
+                    q_p_tensor = torch.tensor(q_p, dtype=torch.float32).unsqueeze(0)
 
-                    # # Compute the Jacobian of the ANN with respect to q_p
-                    # ann_jacobian = self.compute_ann_jacobian(model, q_p_tensor).detach().numpy().T
+                    # Compute the Jacobian of the ANN with respect to q_p
+                    ann_jacobian = self.compute_ann_jacobian(model, q_p_tensor).detach().numpy().T
 
-                    # total_derivative = U_p + U_s @ ann_jacobian
+                    total_derivative = U_p + U_s @ ann_jacobian
 
-                    # Ar = total_derivative.T @ A @ total_derivative
-                    # br = total_derivative.T @ b
+                    Ar = total_derivative.T @ A @ total_derivative
+                    br = total_derivative.T @ b
 
-                    Ar = U_p.T @ A @ U_p
-                    br = U_p.T @ b
+                    # Ar = U_p.T @ A @ U_p
+                    # br = U_p.T @ b
 
+                    sol = spla.spsolve(A, b)
                     # Solve the reduced-order system for q_s
                     q_p = np.linalg.solve(Ar, br)
 
@@ -921,26 +996,33 @@ class FEMBurgers:
                     q_s = model(q_p_tensor).detach().numpy().squeeze()
 
                     # Reconstruct the solution using the POD-ANN model
-                    U1 = U_p @ q_p #+ U_s @ q_s
+                    U1 = U_p @ q_p + U_s @ q_s
 
                     # Compute the error and update the solution
                     error_U = np.linalg.norm(U1 - U0) / np.linalg.norm(U1)
+                    print(f"PROM Iteration {k}. Error: {error_U}")
                     U0 = U1
                     k += 1
 
                 # Store the converged solution for this time step
-                U[:, n + 1] = U_p @ q_p #+ U_s @ q_s#U1
+                U1_pod = U_p @ q_p
+                U1 = U_p @ q_p + U_s @ q_s
+                U[:, n + 1] = U1
 
                 # Optionally, plot the results for this time step
-                # plt.figure()
-                # plt.plot(self.X, U1, label=f'Time step {n + 1} (PROM)', color='red')
-                # plt.xlabel('x')
-                # plt.ylabel('u')
-                # plt.xlim(0, 3)
-                # plt.title(f'PROM Solution at Time Step {n + 1}')
-                # plt.legend()
-                # plt.grid(True)
-                # plt.show()
+                plt.figure()
+                plt.plot(self.X, original_data[:,n+1], label=f'Orig', color='orange')
+                plt.plot(self.X, reconstruction[:,n+1], label=f'POD Rec', color='black')
+                plt.plot(self.X, sol, label=f'FOM', color='green')
+                plt.plot(self.X, U1_pod, label=f'POD', color='blue')
+                plt.plot(self.X, U1, label=f'POD-ANN', color='red')
+                plt.xlabel('x')
+                plt.ylabel('u')
+                plt.xlim(0, 3)
+                plt.title(f'PROM Solution at Time Step {n + 1}')
+                plt.legend()
+                plt.grid(True)
+                plt.show()
 
         return U
 

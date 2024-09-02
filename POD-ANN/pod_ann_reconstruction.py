@@ -42,32 +42,39 @@ def reconstruct_snapshot_with_pod_ann(snapshot_file, U_combined, U_p, U_s, model
     reconstructed_snapshots_ann = []
     reconstructed_snapshots_best = []
     for i in range(q_p.shape[1]):
+        # Define a small perturbation factor
+        perturbation_scale = 0.1  # You can adjust this value to control the magnitude of the perturbation
+
+        # Add a small random perturbation to the predicted q_s values
+        q_p = q_p + perturbation_scale * np.random.randn(*q_p.shape)
+
         q_p_sample = torch.tensor(q_p[:, i], dtype=torch.float32).unsqueeze(0)
         with torch.no_grad():
             q_s_pred = model(q_p_sample)
         q_s_pred = q_s_pred.numpy().T
         q_s_pred_denorm = q_s_pred #* q_s_std + q_s_mean
-        reconstructed_snapshot_ann = U_p @ q_p[:, i] + U_s @ q_s_pred_denorm.reshape(-1)
+        reconstructed_snapshot_ann = U_p @ q_p[:, i] + U_s @ q_s_pred_denorm.reshape(-1) 
         reconstructed_snapshots_ann.append(reconstructed_snapshot_ann)
 
         # Best possible reconstruction
-        reconstructed_snapshot_best = U_p @ q_p[:, i] + U_s @ q_s_original[:, i]
+        reconstructed_snapshot_best = U_p @ q_p[:, i] #+ U_s @ q_s_original[:, i]
         reconstructed_snapshots_best.append(reconstructed_snapshot_best)
 
     # Convert lists to arrays and return
     reconstructed_snapshots_ann = np.array(reconstructed_snapshots_ann).squeeze().T
     reconstructed_snapshots_best = np.array(reconstructed_snapshots_best).squeeze().T
-    return reconstructed_snapshots_ann, reconstructed_snapshots_best
+    return snapshots, reconstructed_snapshots_ann, reconstructed_snapshots_best
 
 def save_npy_files(reconstructed_snapshots_ann, reconstructed_snapshots_best):
     np.save("reconstructed_snapshots_ann.npy", reconstructed_snapshots_ann)
     np.save("reconstructed_snapshots_best.npy", reconstructed_snapshots_best)
     print("Reconstructed snapshots saved as .npy files.")
 
-def plot_and_save_gif(X, reconstructed_snapshots_ann, reconstructed_snapshots_best, At):
+def plot_and_save_gif(X, snapshots, reconstructed_snapshots_ann, reconstructed_snapshots_best, At):
     nTimeSteps = reconstructed_snapshots_ann.shape[1]
     
     fig, ax = plt.subplots()
+    line_orig, = ax.plot(X, snapshots[:, 0], label='Original')
     line_ann, = ax.plot(X, reconstructed_snapshots_ann[:, 0], label='Reconstructed Snapshot (ANN-PROM)')
     line_best, = ax.plot(X, reconstructed_snapshots_best[:, 0], label='Best Possible Reconstruction', linestyle='dashed')
     ax.set_xlim(0, 100)
@@ -77,10 +84,11 @@ def plot_and_save_gif(X, reconstructed_snapshots_ann, reconstructed_snapshots_be
     ax.legend()
 
     def update(frame):
+        line_orig.set_ydata(snapshots[:, frame])
         line_ann.set_ydata(reconstructed_snapshots_ann[:, frame])
         line_best.set_ydata(reconstructed_snapshots_best[:, frame])
         ax.set_title(f't = {frame * At:.2f}')
-        return line_ann, line_best
+        return line_orig, line_ann, line_best
 
     ani = FuncAnimation(fig, update, frames=nTimeSteps, blit=True)
 
@@ -91,7 +99,7 @@ def plot_and_save_gif(X, reconstructed_snapshots_ann, reconstructed_snapshots_be
 
 if __name__ == "__main__":
     # File to reconstruct
-    snapshot_file = '../FEM/training_data/simulation_mu1_4.76_mu2_0.0182.npy'
+    snapshot_file = '../FEM/testing_data/simulations/simulation_mu1_5.75_mu2_0.0350.npy'
 
     # Load the U_p, U_s, and U_combined matrices
     U_p = np.load('U_p.npy')
@@ -110,7 +118,7 @@ if __name__ == "__main__":
     # q_s_std = np.load("q_s_std.npy")
 
     # Reconstruct the snapshots
-    reconstructed_snapshots_ann, reconstructed_snapshots_best = reconstruct_snapshot_with_pod_ann(
+    snapshots, reconstructed_snapshots_ann, reconstructed_snapshots_best = reconstruct_snapshot_with_pod_ann(
         snapshot_file, U_combined, U_p, U_s, model, input_dim
     )
 
@@ -120,4 +128,4 @@ if __name__ == "__main__":
     # Plot and save the reconstruction as a GIF
     X = np.linspace(0, 100, reconstructed_snapshots_ann.shape[0])
     At = 0.07
-    plot_and_save_gif(X, reconstructed_snapshots_ann, reconstructed_snapshots_best, At)
+    plot_and_save_gif(X, snapshots, reconstructed_snapshots_ann, reconstructed_snapshots_best, At)
