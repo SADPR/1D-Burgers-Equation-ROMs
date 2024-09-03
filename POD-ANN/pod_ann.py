@@ -22,8 +22,8 @@ all_snapshots = np.hstack(all_snapshots)  # Ensure shape is (248000, 513)
 # Perform SVD on the snapshots without normalization
 U, S, VT = np.linalg.svd(all_snapshots, full_matrices=False)
 
-# Set the number of modes for inferior and superior modes
-r = 28  # Number of inferior modes
+# Set the number of modes for principal and secondary modes
+r = 28  # Number of principal modes
 R = 301  # Total number of modes
 
 U_p = U[:, :r]
@@ -57,28 +57,28 @@ class POD_ANN(nn.Module):
 
 # Prepare training data
 q = U_combined.T @ all_snapshots  # Project snapshots onto the combined POD basis
-q_i = q[:r, :]  # Inferior modes
-q_s = q[r:R, :]  # Superior modes
+q_p = q[:r, :]  # Principal modes
+q_s = q[r:R, :]  # Secondary modes
 
-# # Normalize the q_i and q_s modes for the neural network
-q_i_mean = np.mean(q_i, axis=1, keepdims=True)
-q_i_std = np.std(q_i, axis=1, keepdims=True)
-# q_i_normalized = (q_i - q_i_mean) / q_i_std
+# # Normalize the q_p and q_s modes for the neural network
+q_p_mean = np.mean(q_p, axis=1, keepdims=True)
+q_p_std = np.std(q_p, axis=1, keepdims=True)
+# q_p_normalized = (q_p - q_p_mean) / q_p_std
 
 q_s_mean = np.mean(q_s, axis=1, keepdims=True)
 q_s_std = np.std(q_s, axis=1, keepdims=True)
 # q_s_normalized = (q_s - q_s_mean) / q_s_std
 
 # Convert to PyTorch tensors
-q_i_tensor = torch.tensor(q_i.T, dtype=torch.float32)  # Transpose to (n_samples, r)
+q_p_tensor = torch.tensor(q_p.T, dtype=torch.float32)  # Transpose to (n_samples, r)
 q_s_tensor = torch.tensor(q_s.T, dtype=torch.float32)  # Transpose to (n_samples, R-r)
 
 # Split data into training and testing sets
-q_i_train, q_i_test, q_s_train, q_s_test = train_test_split(q_i_tensor, q_s_tensor, test_size=0.2, random_state=42)
+q_p_train, q_p_test, q_s_train, q_s_test = train_test_split(q_p_tensor, q_s_tensor, test_size=0.2, random_state=42)
 
 # Create data loaders
-train_dataset = torch.utils.data.TensorDataset(q_i_train, q_s_train)
-test_dataset = torch.utils.data.TensorDataset(q_i_test, q_s_test)
+train_dataset = torch.utils.data.TensorDataset(q_p_train, q_s_train)
+test_dataset = torch.utils.data.TensorDataset(q_p_test, q_s_test)
 
 train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=64, shuffle=True)
 test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=64, shuffle=False)

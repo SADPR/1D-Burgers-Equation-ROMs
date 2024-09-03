@@ -20,7 +20,7 @@ if __name__ == "__main__":
     H = np.load("H_quadratic.npy")
 
     # Load a specific snapshot for reconstruction
-    snapshot_file = '../FEM/training_data/simulation_mu1_4.76_mu2_0.0182.npy'
+    snapshot_file = '../FEM/training_data/simulation_mu1_4.61_mu2_0.0200.npy'
     snapshot = np.load(snapshot_file)
     Ns = snapshot.shape[1]
     num_modes = Phi_p.shape[1]

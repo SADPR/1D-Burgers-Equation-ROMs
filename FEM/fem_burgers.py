@@ -33,7 +33,7 @@ def get_dQ_dq(modes, q):
     Compute the derivative of the quadratic terms with respect to the reduced coordinates q_p.
     This will give a matrix where each row corresponds to the derivative of a specific quadratic term
     with respect to the components of q_p.
-    
+
     Parameters:
     - modes: int, number of modes (size of q_p).
     - q: np.array, the vector q_p of reduced coordinates.
@@ -43,7 +43,7 @@ def get_dQ_dq(modes, q):
     """
     k = int(modes * (modes + 1) / 2)
     dQ_dq = np.zeros((k, modes))
-    
+
     index = 0
     for i in range(modes):
         for j in range(i, modes):
@@ -70,7 +70,7 @@ def compute_derivative(U_p, H, q_p):
     """
     modes = len(q_p)
     dQ_dq = get_dQ_dq(modes, q_p)
-    
+
     # The derivative of the quadratic manifold approximation
     derivative = U_p + H @ dQ_dq
 
@@ -100,13 +100,13 @@ class FEMBurgers:
             for gauss_point in range(self.ngaus):
                 N_gp = self.N[gauss_point, :]  # Shape functions at the Gauss point
                 dN_dxi_gp = self.Nxi[gauss_point, :]  # Shape function derivatives wrt reference coordinate at the Gauss point
-                
+
                 # Compute the Jacobian
                 J = dN_dxi_gp @ x_element
-                
+
                 # Compute the differential volume
                 dV = self.wgp[gauss_point] * np.abs(J)
-                
+
                 # Update the local mass matrix
                 M_element += np.outer(N_gp, N_gp) * dV
 
@@ -116,7 +116,7 @@ class FEMBurgers:
                     M_global[element_nodes[i], element_nodes[j]] += M_element[i, j]
 
         return M_global.tocsc()  # Convert to compressed sparse column format for efficiency
-    
+
     def compute_diffusion_matrix(self):
         n_nodes = len(self.X)  # Number of nodes
         n_elements, n_local_nodes = self.T.shape  # Number of elements and nodes per element
@@ -131,16 +131,16 @@ class FEMBurgers:
             for gauss_point in range(self.ngaus):
                 N_gp = self.N[gauss_point, :]  # Shape functions at the Gauss point
                 dN_dxi_gp = self.Nxi[gauss_point, :]  # Shape function derivatives wrt reference coordinate at the Gauss point
-                
+
                 # Compute the Jacobian
                 J = dN_dxi_gp @ x_element
-                
+
                 # Compute the differential volume
                 dV = self.wgp[gauss_point] * np.abs(J)
-                
+
                 # Compute the derivative of shape functions with respect to the physical coordinate
                 dN_dx_gp = dN_dxi_gp / J
-                
+
                 # Update the local diffusion matrix
                 K_element += np.outer(dN_dx_gp, dN_dx_gp) * dV
 
@@ -150,7 +150,7 @@ class FEMBurgers:
                     K_global[element_nodes[i], element_nodes[j]] += K_element[i, j]
 
         return K_global.tocsc()  # Convert to compressed sparse column format for efficiency
-    
+
     def compute_convection_matrix(self, U_n):
         n_nodes = len(self.X)  # Number of nodes
         n_elements, n_local_nodes = self.T.shape  # Number of elements and nodes per element
@@ -166,19 +166,19 @@ class FEMBurgers:
             for gauss_point in range(self.ngaus):
                 N_gp = self.N[gauss_point, :]  # Shape functions at the Gauss point
                 dN_dxi_gp = self.Nxi[gauss_point, :]  # Shape function derivatives wrt reference coordinate at the Gauss point
-                
+
                 # Compute the Jacobian
                 J = dN_dxi_gp @ x_element
-                
+
                 # Compute the differential volume
                 dV = self.wgp[gauss_point] * np.abs(J)
-                
+
                 # Compute the derivative of shape functions with respect to the physical coordinate
                 dN_dx_gp = dN_dxi_gp / J
-                
+
                 # Compute the solution value at the Gauss point
                 u_gp = N_gp @ u_element
-                
+
                 # Update the local convection matrix
                 C_element += np.outer(N_gp, u_gp * dN_dx_gp) * dV
 
@@ -203,19 +203,19 @@ class FEMBurgers:
             for gauss_point in range(self.ngaus):
                 N_gp = self.N[gauss_point, :]  # Shape functions at the Gauss point
                 dN_dxi_gp = self.Nxi[gauss_point, :]  # Shape function derivatives wrt reference coordinate at the Gauss point
-                
+
                 # Compute the Jacobian
                 J = dN_dxi_gp @ x_element
-                
+
                 # Compute the differential volume
                 dV = self.wgp[gauss_point] * np.abs(J)
-                
+
                 # Compute the physical coordinate at the Gauss point
                 x_gp = N_gp @ x_element
-                
+
                 # Compute the forcing function at the Gauss point
                 f_gp = 0.02 * np.exp(mu2 * x_gp)
-                
+
                 # Update the local forcing vector
                 F_element += f_gp * N_gp * dV
 
@@ -224,7 +224,7 @@ class FEMBurgers:
                 F_global[element_nodes[i]] += F_element[i]
 
         return F_global
-    
+
     def compute_convection_matrix_derivative(self, U_n):
         n_nodes = len(self.X)  # Number of nodes
         n_elements, n_local_nodes = self.T.shape  # Number of elements and nodes per element
@@ -240,16 +240,16 @@ class FEMBurgers:
             for gauss_point in range(self.ngaus):
                 N_gp = self.N[gauss_point, :]  # Shape functions at the Gauss point
                 dN_dxi_gp = self.Nxi[gauss_point, :]  # Shape function derivatives wrt reference coordinate at the Gauss point
-                
+
                 # Compute the Jacobian
                 J = dN_dxi_gp @ x_element
-                
+
                 # Compute the differential volume
                 dV = self.wgp[gauss_point] * np.abs(J)
-                
+
                 # Compute the derivative of shape functions with respect to the physical coordinate
                 dN_dx_gp = dN_dxi_gp / J
-                
+
                 # Compute the derivative of the convection matrix with respect to U
                 for i in range(n_local_nodes):
                     for j in range(n_local_nodes):
@@ -289,10 +289,10 @@ class FEMBurgers:
 
                 # Compute convection matrix
                 C = self.compute_convection_matrix(U0)
-                
+
                 # Compute derivative of convection matrix
                 dC_dU = self.compute_convection_matrix_derivative(U0)
-                
+
                 # Construct the Jacobian matrix
                 J = M + At * E * K + At * C + At * dC_dU @ U0  # Matrix multiplication for dC_dU * U0
 
@@ -323,7 +323,7 @@ class FEMBurgers:
 
         return U
 
-    
+
     def fom_burgers(self, At, nTimeSteps, u0, mu1, E, mu2):
         m = len(self.X) - 1
 
@@ -343,10 +343,10 @@ class FEMBurgers:
             k = 0
             while (error_U > 1e-6) and (k < 20):
                 print(f"Iteration: {k}, Error: {error_U}")
-                
+
                 # Compute convection matrix using the current solution guess
                 C = self.compute_convection_matrix(U0)
-                
+
                 # Compute forcing vector
                 F = self.compute_forcing_vector(mu2)
 
@@ -374,7 +374,7 @@ class FEMBurgers:
 
                 # Compute the error to check for convergence
                 error_U = np.linalg.norm(delta_U) / np.linalg.norm(U1)
-                
+
                 # Update the guess for the next iteration
                 U0 = U1
                 k += 1
@@ -383,7 +383,7 @@ class FEMBurgers:
             U[:, n + 1] = U1
 
         return U
-    
+
     def fom_burgers_dirichlet(self, At, nTimeSteps, u0, mu1, E, mu2):
         m = len(self.X) - 1
 
@@ -403,10 +403,10 @@ class FEMBurgers:
             k = 0
             while (error_U > 1e-6) and (k < 20):
                 print(f"Iteration: {k}, Error: {error_U}")
-                
+
                 # Compute convection matrix using the current solution guess
                 C = self.compute_convection_matrix(U0)
-                
+
                 # Compute forcing vector
                 F = self.compute_forcing_vector(mu2)
 
@@ -445,7 +445,7 @@ class FEMBurgers:
 
                 # Compute the error to check for convergence
                 error_U = np.linalg.norm(delta_U) / np.linalg.norm(U1)
-                
+
                 # Update the guess for the next iteration
                 U0 = U1
                 k += 1
@@ -454,7 +454,7 @@ class FEMBurgers:
             U[:, n + 1] = U1
 
         return U
-    
+
     def pod_prom_burgers(self, At, nTimeSteps, u0, uxa, E, mu2, Phi, projection="Galerkin"):
         m = len(self.X) - 1
 
@@ -474,10 +474,10 @@ class FEMBurgers:
             k = 0
             while (error_U > 1e-6) and (k < 20):
                 print(f"Iteration: {k}, Error: {error_U}")
-                
+
                 # Compute convection matrix using the current solution guess
                 C = self.compute_convection_matrix(U0)
-                
+
                 # Compute forcing vector
                 F = self.compute_forcing_vector(mu2)
 
@@ -516,7 +516,7 @@ class FEMBurgers:
 
                 # Compute the error to check for convergence
                 error_U = np.linalg.norm(delta_q) / np.linalg.norm(q)
-                
+
                 # Update the guess for the next iteration
                 U0 = U1
                 k += 1
@@ -576,7 +576,7 @@ class FEMBurgers:
                     # Update the guess for the next iteration
                     U0 = U1
                     k += 1
-                
+
                 # Plot the results for this time step
                 # plt.figure()
                 # plt.plot(self.X, U1, label=f'Time step {n + 1} (FOM)', color='red')
@@ -624,7 +624,7 @@ class FEMBurgers:
 
                     # Modify b for boundary conditions
                     b[0] = uxa
-                    
+
                     if k==0:
                         # Compute the Jacobian of the decoder at q0
                         jacobian = self.compute_jacobian(model.decoder, q0).detach().numpy().T
@@ -640,7 +640,7 @@ class FEMBurgers:
 
                     # Decode
                     U1_normalized = model.decoder(torch.tensor(q, dtype=torch.float32)).detach().numpy().squeeze()
-                        
+
                     # Denormalize the solution
                     U1 = U1_normalized #* std + mean
 
@@ -706,7 +706,7 @@ class FEMBurgers:
             grad_output = torch.zeros_like(decoded)
             grad_output[0, i] = 1  # We set the i-th element to 1 to get the gradient w.r.t. q
             grad_i = torch.autograd.grad(decoded, q, grad_outputs=grad_output, retain_graph=True)[0]
-            
+
             # Append the gradient to the list
             jacobian.append(grad_i)
 
@@ -715,7 +715,7 @@ class FEMBurgers:
 
         return jacobian
 
-    
+
     from scipy.sparse import lil_matrix
 
     def local_prom_burgers(self, At, nTimeSteps, u0, uxa, E, mu2, kmeans, local_bases, U_global, num_global_modes, projection="Galerkin"):
@@ -822,10 +822,10 @@ class FEMBurgers:
             k = 0
             while (error_U > 1e-6) and (k < 20):
                 print(f"Iteration: {k}, Error: {error_U}")
-                
+
                 # Compute convection matrix using the current solution guess
                 C = self.compute_convection_matrix(U0)
-                
+
                 # Compute forcing vector
                 F = self.compute_forcing_vector(mu2)
 
@@ -870,7 +870,7 @@ class FEMBurgers:
 
                 # Compute the error to check for convergence
                 error_U = np.linalg.norm(delta_qp) / np.linalg.norm(q_p)
-                
+
                 # Update the guess for the next iteration
                 U0 = U1
                 k += 1
@@ -932,7 +932,7 @@ class FEMBurgers:
                     # Update the guess for the next iteration
                     U0 = U1
                     k += 1
-                
+
                 # Plot the results for this time step
                 # plt.figure()
                 # plt.plot(self.X, U1, label=f'Time step {n + 1} (FOM)', color='red')

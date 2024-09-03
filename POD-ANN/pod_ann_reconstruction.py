@@ -43,7 +43,7 @@ def reconstruct_snapshot_with_pod_ann(snapshot_file, U_combined, U_p, U_s, model
     reconstructed_snapshots_best = []
     for i in range(q_p.shape[1]):
         # Define a small perturbation factor
-        perturbation_scale = 0.1  # You can adjust this value to control the magnitude of the perturbation
+        perturbation_scale = 0.0  # You can adjust this value to control the magnitude of the perturbation
 
         # Add a small random perturbation to the predicted q_s values
         q_p = q_p + perturbation_scale * np.random.randn(*q_p.shape)
@@ -53,11 +53,11 @@ def reconstruct_snapshot_with_pod_ann(snapshot_file, U_combined, U_p, U_s, model
             q_s_pred = model(q_p_sample)
         q_s_pred = q_s_pred.numpy().T
         q_s_pred_denorm = q_s_pred #* q_s_std + q_s_mean
-        reconstructed_snapshot_ann = U_p @ q_p[:, i] + U_s @ q_s_pred_denorm.reshape(-1) 
+        reconstructed_snapshot_ann = U_p @ q_p[:, i] + U_s @ q_s_pred_denorm.reshape(-1)
         reconstructed_snapshots_ann.append(reconstructed_snapshot_ann)
 
         # Best possible reconstruction
-        reconstructed_snapshot_best = U_p @ q_p[:, i] #+ U_s @ q_s_original[:, i]
+        reconstructed_snapshot_best = U_p @ q_p[:, i] + U_s @ q_s_original[:, i]
         reconstructed_snapshots_best.append(reconstructed_snapshot_best)
 
     # Convert lists to arrays and return
@@ -72,7 +72,7 @@ def save_npy_files(reconstructed_snapshots_ann, reconstructed_snapshots_best):
 
 def plot_and_save_gif(X, snapshots, reconstructed_snapshots_ann, reconstructed_snapshots_best, At):
     nTimeSteps = reconstructed_snapshots_ann.shape[1]
-    
+
     fig, ax = plt.subplots()
     line_orig, = ax.plot(X, snapshots[:, 0], label='Original')
     line_ann, = ax.plot(X, reconstructed_snapshots_ann[:, 0], label='Reconstructed Snapshot (ANN-PROM)')
