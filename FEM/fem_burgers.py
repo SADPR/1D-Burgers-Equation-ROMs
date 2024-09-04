@@ -880,7 +880,7 @@ class FEMBurgers:
 
         return U
 
-    def pod_ann_prom(self, At, nTimeSteps, u0, uxa, E, mu2, U_p, U_s, model):
+    def pod_ann_prom(self, At, nTimeSteps, u0, uxa, E, mu2, U_p, U_s, model, projection="LSPG"):
 
         original_data = np.load(f"../FEM/training_data/simulation_mu1_{uxa:.2f}_mu2_{mu2:.4f}.npy")
         reconstruction = U_p@(U_p.T@original_data)
@@ -898,131 +898,74 @@ class FEMBurgers:
         for n in range(nTimeSteps):
             print(f"Time Step: {n}. Time: {n * At}")
             U0 = U[:, n]
+            
+            # Project the current state onto the primary POD basis
+            q_p = U_p.T @ U0
 
-            # if (n % 11) < 10:
-            if n<8:
-                print("FOM")
-                # Full-Order Model (FOM) approach for the first three time steps in each sequence of four
-                error_U = 1
-                k = 0
-                while (error_U > 1e-6) and (k < 20):
-                    print(f"FOM Iteration {k}. Error: {error_U}")
+            error_U = 1
+            k = 0
+            while (error_U > 1e-6) and (k < 100):
 
-                    # Compute convection matrix using the current solution guess
-                    C = self.compute_convection_matrix(U0)
+                C = self.compute_convection_matrix(U0)
+                F = self.compute_forcing_vector(mu2)
+                A = M + At * C + At * E * K
 
-                    # Compute forcing vector
-                    F = self.compute_forcing_vector(mu2)
+                # Convert to LIL format to modify the structure
+                A = A.tolil()
 
-                    # Form the system matrix A and right-hand side vector b
-                    A = M + At * C + At * E * K
-                    b = M @ U[:, n] + At * F
+                # Modify A for boundary conditions
+                A[0, :] = 0
+                A[0, 0] = 1
 
-                    # Modify A and b for boundary conditions
-                    A[0, :] = 0
-                    A[0, 0] = 1
-                    b[0] = uxa
+                # Compute right-hand side vector b
+                b = M @ U[:, n] + At * F
 
-                    # Solve the full-order system
-                    U1 = spla.spsolve(A, b)
+                # Modify b for boundary conditions
+                b[0] = uxa
 
-                    # Compute the error to check for convergence
-                    error_U = np.linalg.norm(U1 - U0) / np.linalg.norm(U1)
+                # Compute the residual R
+                R = A @ U0 - b
 
-                    # Update the guess for the next iteration
-                    U0 = U1
-                    k += 1
+                # Compute the ANN correction term based on the reduced coordinates q_p
+                q_p_tensor = torch.tensor(q_p, dtype=torch.float32).unsqueeze(0)
 
-                # Plot the results for this time step
-                # plt.figure()
-                # plt.plot(self.X, U1, label=f'Time step {n + 1} (FOM)', color='red')
-                # plt.xlabel('x')
-                # plt.ylabel('u')
-                # plt.xlim(0,3)
-                # plt.title(f'FOM Solution at Time Step {n + 1}')
-                # plt.legend()
-                # plt.grid(True)
-                # plt.show()
+                # Compute the Jacobian of the ANN with respect to q_p
+                ann_jacobian = self.compute_ann_jacobian(model, q_p_tensor).detach().numpy()
 
-                # Store the converged solution for this time step
-                U[:, n + 1] = U1
-            else:
-                print("POD-ANN")
-                # Project the current state onto the primary POD basis
-                q_p = U_p.T @ U0
+                # Compute dD(u)/dq
+                dD_u_dq = U_p + U_s @ ann_jacobian
 
-                error_U = 1
-                k = 0
-                while (error_U > 1e-6) and (k < 100):
+                if projection == "Galerkin":
+                    # Galerkin projection
+                    Ar = dD_u_dq.T @ A @ dD_u_dq
+                    br = dD_u_dq.T @ R
+                elif projection == "LSPG":
+                    # LSPG projection
+                    J_dD_u_dq = A @ dD_u_dq
+                    Ar = J_dD_u_dq.T @ J_dD_u_dq
+                    br = J_dD_u_dq.T @ R
 
-                    C = self.compute_convection_matrix(U0)
-                    F = self.compute_forcing_vector(mu2)
-                    A = M + At * C + At * E * K
+                # Solve the reduced-order system for q_s
+                delta_q_p = np.linalg.solve(Ar, -br)
 
-                    # Convert to LIL format to modify the structure
-                    A = A.tolil()
+                # Update the reduced coordinates q_p
+                q_p += delta_q_p
 
-                    # Modify A for boundary conditions
-                    A[0, :] = 0
-                    A[0, 0] = 1
+                q_p_tensor = torch.tensor(q_p, dtype=torch.float32).unsqueeze(0)
 
-                    # Compute right-hand side vector b
-                    b = M @ U[:, n] + At * F
+                q_s = model(q_p_tensor).detach().numpy().squeeze()
 
-                    # Modify b for boundary conditions
-                    b[0] = uxa
-
-                    # if k == 0:
-                    # Compute the ANN correction term based on the reduced coordinates q_p
-                    q_p_tensor = torch.tensor(q_p, dtype=torch.float32).unsqueeze(0)
-
-                    # Compute the Jacobian of the ANN with respect to q_p
-                    ann_jacobian = self.compute_ann_jacobian(model, q_p_tensor).detach().numpy().T
-
-                    total_derivative = U_p + U_s @ ann_jacobian
-
-                    Ar = total_derivative.T @ A @ total_derivative
-                    br = total_derivative.T @ b
-
-                    # Ar = U_p.T @ A @ U_p
-                    # br = U_p.T @ b
-
-                    sol = spla.spsolve(A, b)
-                    # Solve the reduced-order system for q_s
-                    q_p = np.linalg.solve(Ar, br)
-
-                    q_p_tensor = torch.tensor(q_p, dtype=torch.float32).unsqueeze(0)
-
-                    q_s = model(q_p_tensor).detach().numpy().squeeze()
-
-                    # Reconstruct the solution using the POD-ANN model
-                    U1 = U_p @ q_p + U_s @ q_s
-
-                    # Compute the error and update the solution
-                    error_U = np.linalg.norm(U1 - U0) / np.linalg.norm(U1)
-                    print(f"PROM Iteration {k}. Error: {error_U}")
-                    U0 = U1
-                    k += 1
-
-                # Store the converged solution for this time step
-                U1_pod = U_p @ q_p
+                # Reconstruct the solution using the POD-ANN model
                 U1 = U_p @ q_p + U_s @ q_s
-                U[:, n + 1] = U1
 
-                # Optionally, plot the results for this time step
-                plt.figure()
-                plt.plot(self.X, original_data[:,n+1], label=f'Orig', color='orange')
-                plt.plot(self.X, reconstruction[:,n+1], label=f'POD Rec', color='black')
-                plt.plot(self.X, sol, label=f'FOM', color='green')
-                plt.plot(self.X, U1_pod, label=f'POD', color='blue')
-                plt.plot(self.X, U1, label=f'POD-ANN', color='red')
-                plt.xlabel('x')
-                plt.ylabel('u')
-                plt.xlim(0, 3)
-                plt.title(f'PROM Solution at Time Step {n + 1}')
-                plt.legend()
-                plt.grid(True)
-                plt.show()
+                # Compute the error and update the solution
+                error_U = np.linalg.norm(U1 - U0) / np.linalg.norm(U1)
+                print(f"PROM Iteration {k}. Error: {error_U}")
+                U0 = U1
+                k += 1
+
+            # Store the converged solution for this time step
+            U[:, n + 1] = U1
 
         return U
 
@@ -1043,30 +986,11 @@ class FEMBurgers:
         # Ensure q requires gradients
         q = q.clone().detach().requires_grad_(True)
 
-        # Forward pass through the ANN model
-        output = model(q)
+        # Use torch.autograd.functional.jacobian to compute the Jacobian
+        jacobian = torch.autograd.functional.jacobian(model, q)
 
-        # Initialize an empty list to store the gradients
-        jacobian = []
+        # Remove the batch dimension (assuming batch size is 1)
+        jacobian = jacobian.squeeze(0).squeeze(1)
 
-        # Loop over each element of the output (assuming output is a vector)
-        for i in range(output.shape[1]):  # Assuming output is of shape [batch_size, output_dim]
-            # Zero the gradients
-            if q.grad is not None:
-                q.grad.zero_()
+        return jacobian.detach() # Detach to prevent unnecessary computation graph tracking
 
-            # Compute the gradient of the i-th output element with respect to the input q
-            grad_output = torch.zeros_like(output)
-            grad_output[:, i] = 1  # Set the i-th element to 1 to get the gradient w.r.t. q
-            grad_i = torch.autograd.grad(outputs=output, inputs=q, grad_outputs=grad_output, retain_graph=True, create_graph=True)[0]
-
-            # Append the gradient to the list
-            jacobian.append(grad_i)
-
-        # Stack the list of gradients to form the Jacobian matrix
-        jacobian = torch.stack(jacobian, dim=0).squeeze(1)
-
-        # Transpose the Jacobian to match the expected dimensions
-        jacobian = jacobian.transpose(0, 1).detach()
-
-        return jacobian

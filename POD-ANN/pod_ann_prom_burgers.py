@@ -57,9 +57,9 @@ if __name__ == "__main__":
     uxa = 4.76  # u(0,t) = 4.76
 
     # Time discretization and numerical diffusion
-    Tf = 1.0
+    Tf = 35.0
     At = 0.07
-    nTimeSteps = int(round(Tf / At)) + 1
+    nTimeSteps = int(Tf / At) + 1
     E = 0.01
 
     # Parameter mu2
@@ -80,42 +80,31 @@ if __name__ == "__main__":
     print('POD-ANN PROM method...')
     U_POD_ANN_PROM = fem_burgers.pod_ann_prom(At, nTimeSteps, u0, uxa, E, mu2, U_p, U_s, model)
 
-    # # Plotting each time step in a separate subplot
-    # fig, axes = plt.subplots(nrows=(nTimeSteps // 4) + 1, ncols=4, figsize=(15, 10))
-    # axes = axes.flatten()
+    # Save the solution as a .npy file
+    np.save("U_POD_ANN_PROM_solution.npy", U_POD_ANN_PROM)
+    print("Solution saved to U_POD_ANN_PROM_solution.npy")
 
-    # for i in range(nTimeSteps + 1):
-    #     ax = axes[i]
-    #     ax.plot(X, U_POD_ANN_PROM[:, i])
-    #     ax.set_xlim(a, 3)
-    #     ax.set_ylim(0, 6)
-    #     ax.set_xlabel('x')
-    #     ax.set_ylabel('u')
-    #     ax.set_title(f't = {i * At:.2f}')
-    #     ax.grid(True)
+    # # Visualization and animation
+    # fig, ax = plt.subplots()
+    # line, = ax.plot(X, U_POD_ANN_PROM[:, 0], label='Solution over time')
+    # ax.set_xlim(a, b)
+    # ax.set_ylim(0, 6)
+    # ax.set_xlabel('x')
+    # ax.set_ylabel('u')
+    # ax.legend()
 
-    # plt.tight_layout()
+    # def update(frame):
+    #     line.set_ydata(U_POD_ANN_PROM[:, frame])
+    #     ax.set_title(f't = {frame * At:.2f}')
+    #     return line,
+
+    # ani = FuncAnimation(fig, update, frames=nTimeSteps + 1, blit=True)
+
+    # # Save animation as GIF
+    # ani.save("burgers_equation_prom.gif", writer=PillowWriter(fps=10))
+
     # plt.show()
 
-    fig, ax = plt.subplots()
-    line, = ax.plot(X, U_POD_ANN_PROM[:, 0], label='Solution over time')
-    ax.set_xlim(a, b)
-    ax.set_ylim(0, 6)
-    ax.set_xlabel('x')
-    ax.set_ylabel('u')
-    ax.legend()
-
-    def update(frame):
-        line.set_ydata(U_POD_ANN_PROM[:, frame])
-        ax.set_title(f't = {frame * At:.2f}')
-        return line,
-
-    ani = FuncAnimation(fig, update, frames=nTimeSteps + 1, blit=True)
-
-    # Save animation as GIF
-    ani.save("burgers_equation_prom.gif", writer=PillowWriter(fps=10))
-
-    plt.show()
 
 
 
