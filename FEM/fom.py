@@ -25,8 +25,8 @@ if __name__ == "__main__":
     E = 0.01
 
     # Parameters
-    mu1 = 4.76
-    mu2 = 0.0182
+    mu1 = 4.77
+    mu2 = 0.0200
 
     # Create an instance of the FEMBurgers class
     fem_burgers = FEMBurgers(X, T)
@@ -62,7 +62,7 @@ if __name__ == "__main__":
     # gif_filename = f"simulation_mu1_{mu1:.2f}_mu2_{mu2:.4f}.gif"
     # ani.save(gif_filename, writer=PillowWriter(fps=10))
     # plt.close(fig)  # Close the figure to avoid displaying it
-    
+
 
 
 
