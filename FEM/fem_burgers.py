@@ -994,7 +994,7 @@ class FEMBurgers:
 
         return jacobian.detach() # Detach to prevent unnecessary computation graph tracking
 
-    def pod_rbf_prom(self, At, nTimeSteps, u0, uxa, E, mu2, U_p, U_s, q_p_train, W, epsilon, projection="LSPG"):
+    def pod_rbf_prom_debug(self, At, nTimeSteps, u0, uxa, E, mu2, U_p, U_s, q_p_train, W, epsilon, projection="LSPG"):
         """
         POD-RBF based PROM.
 
@@ -1147,6 +1147,108 @@ class FEMBurgers:
 
             end_time_step = time.time()
             print(f"Time for time step {n}: {end_time_step - start_time_step:.6f} seconds")
+
+        return U
+
+    def pod_rbf_prom(self, At, nTimeSteps, u0, uxa, E, mu2, U_p, U_s, q_p_train, W, epsilon, projection="LSPG"):
+        """
+        POD-RBF based PROM.
+
+        Parameters:
+        - At: Time step size.
+        - nTimeSteps: Number of time steps.
+        - u0: Initial condition vector.
+        - uxa: Boundary condition at x = a.
+        - E: Diffusion coefficient.
+        - mu2: Parameter mu2 for the forcing term.
+        - U_p: Primary POD basis.
+        - U_s: Secondary POD basis.
+        - q_p_train: Training data for principal modes.
+        - W: Precomputed RBF weights for secondary modes.
+        - projection: Type of projection ("Galerkin" or "LSPG").
+        - epsilon: The width parameter for the RBF kernel.
+
+        Returns:
+        - U: Full solution matrix over time.
+        """
+        m = len(self.X) - 1
+
+        # Allocate memory for the solution matrix
+        U = np.zeros((m + 1, nTimeSteps + 1))
+
+        # Initial condition
+        U[:, 0] = u0
+
+        M = self.compute_mass_matrix()
+        K = self.compute_diffusion_matrix()
+
+        for n in range(nTimeSteps):
+            print(f"Time Step: {n}. Time: {n * At}")
+
+            U0 = U[:, n]
+
+            # Project the current state onto the primary POD basis
+            q_p = U_p.T @ U0
+
+            error_U = 1
+            k = 0
+            while (error_U > 5e-6) and (k < 100):
+                C = self.compute_convection_matrix(U0)
+                F = self.compute_forcing_vector(mu2)
+                A = M + At * C + At * E * K
+
+                # Convert to LIL format to modify the structure
+                A = A.tolil()
+
+                # Modify A for boundary conditions
+                A[0, :] = 0
+                A[0, 0] = 1
+
+                # Compute right-hand side vector b
+                b = M @ U[:, n] + At * F
+
+                # Modify b for boundary conditions
+                b[0] = uxa
+
+                # Compute the residual R
+                R = A @ U0 - b
+
+                # Compute the Jacobian of the RBF interpolation with respect to q_p
+                rbf_jacobian = self.compute_rbf_jacobian(q_p_train, W, q_p, epsilon)
+
+                # Compute dD(u)/dq
+                dD_u_dq = U_p + U_s @ rbf_jacobian
+
+                if projection == "Galerkin":
+                    # Galerkin projection
+                    Ar = dD_u_dq.T @ A @ dD_u_dq
+                    br = dD_u_dq.T @ R
+                elif projection == "LSPG":
+                    # LSPG projection
+                    J_dD_u_dq = A @ dD_u_dq
+                    Ar = J_dD_u_dq.T @ J_dD_u_dq
+                    br = J_dD_u_dq.T @ R
+
+                # Solve the reduced-order system for q_p update
+                delta_q_p = np.linalg.solve(Ar, -br)
+
+                # Update the reduced coordinates q_p
+                q_p += delta_q_p
+
+                # Recompute q_s using the updated q_p
+                q_s = self.interpolate_with_rbf(q_p_train, W, q_p, epsilon)
+
+                # Reconstruct the solution using the POD-RBF model
+                U1 = U_p @ q_p + U_s @ q_s
+
+                # Compute the error and update the solution
+                error_U = np.linalg.norm(U1 - U0) / np.linalg.norm(U1)
+                print(f"PROM Iteration {k}. Error: {error_U}")
+                U0 = U1
+                k += 1
+
+            # Store the converged solution for this time step
+            U[:, n + 1] = U1
 
         return U
 

@@ -35,7 +35,7 @@ if __name__ == "__main__":
     uxa = 4.76  # u(0,t) = 4.76
 
     # Time discretization and numerical diffusion
-    Tf = 1.0
+    Tf = 35.0
     At = 0.07
     nTimeSteps = int(Tf / At) + 1
     E = 0.01
