@@ -1,28 +1,63 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation, PillowWriter
-import jax.numpy as jnp
 import pickle
 import os
 
 # Function to compute Euclidean distances between two sets of points
 def compute_distances(X1, X2):
     """Compute pairwise Euclidean distances between two sets of points."""
-    dists = jnp.sqrt(jnp.sum((X1[:, None, :] - X2[None, :, :]) ** 2, axis=-1))
+    # X1 has shape (1, 28), X2 has shape (28, 2000), we want distances between the single point in X1 and each point in X2.
+    # print(f"Shape of X1: {X1.shape}, Shape of X2: {X2.shape}")  # Debugging print
+
+    # Correct the subtraction so that each point in X2 is compared to the single point in X1
+    dists = np.sqrt(np.sum((X1 - X2) ** 2, axis=1))
+
+    # print(f"Shape of distances: {dists.shape}")  # Debugging print
     return dists
+
 
 # Function to compute the Gaussian RBF kernel
 def gaussian_rbf(r, epsilon):
     """Gaussian RBF kernel function."""
-    return jnp.exp(-(epsilon * r) ** 2)
+    return np.exp(-(epsilon * r) ** 2)
 
 # Function to interpolate using precomputed weights
 def interpolate_with_weights(X_train, W, x_new, epsilon):
     """Interpolate at new points using precomputed weights."""
-    dists = compute_distances(x_new[None, :], X_train)  # Compute distances between the new point and training points
+    # print(f"Shape of x_new: {x_new.shape}, Shape of X_train: {X_train.shape}, Shape of W: {W.shape}")  # Debugging print
+    dists = compute_distances(x_new, X_train)  # Compute distances between the new point and training points
     rbf_values = gaussian_rbf(dists, epsilon)  # Apply RBF kernel
+    # print(f"Shape of RBF values: {rbf_values.shape}")  # Debugging print
     f_new = rbf_values @ W  # Use precomputed weights for interpolation
+    # print(f"Shape of interpolated values: {f_new.shape}")  # Debugging print
     return f_new
+
+# Function to reconstruct snapshot using precomputed RBF weights
+def reconstruct_snapshot_with_pod_rbf(snapshot_file, U_p, U_s, q_p_train, W, r, epsilon):
+    # Load the snapshot file
+    snapshots = np.load(snapshot_file)
+
+    # Project onto the POD basis to get q_p
+    q = U_p.T @ snapshots
+    q_p = q[:r, :]
+    # print(f"Shape of q_p: {q_p.shape}")  # Debugging print
+
+    # Reconstruct the snapshots using precomputed RBF weights
+    reconstructed_snapshots_rbf = []
+    for i in range(q_p.shape[1]):
+        q_p_sample = np.array(q_p[:, i].reshape(1, -1))  # Reshape to match input format for RBF
+        # print(f"Shape of q_p_sample: {q_p_sample.shape}")  # Debugging print
+        q_s_pred = interpolate_with_weights(np.array(q_p_train), np.array(W), q_p_sample, epsilon).T  # Use precomputed weights
+        # print(f"Shape of q_s_pred: {q_s_pred.shape}")  # Debugging print
+        reconstructed_snapshot_rbf = U_p @ q_p[:, i] + U_s @ q_s_pred.reshape(-1)
+        # print(f"Shape of reconstructed_snapshot_rbf: {reconstructed_snapshot_rbf.shape}")  # Debugging print
+        reconstructed_snapshots_rbf.append(reconstructed_snapshot_rbf)
+
+    # Convert list to array and return
+    reconstructed_snapshots_rbf = np.array(reconstructed_snapshots_rbf).squeeze().T
+    print(f"Final shape of reconstructed_snapshots_rbf: {reconstructed_snapshots_rbf.shape}")  # Debugging print
+    return reconstructed_snapshots_rbf
 
 # Function to create gif with all snapshots overlaid
 def create_combined_gif(X, original_snapshot, rbf_reconstructed, nTimeSteps, At, latent_dim):
@@ -48,27 +83,6 @@ def create_combined_gif(X, original_snapshot, rbf_reconstructed, nTimeSteps, At,
 
     plt.show()
 
-# Function to reconstruct snapshot using precomputed RBF weights
-def reconstruct_snapshot_with_pod_rbf(snapshot_file, U_p, U_s, q_p_train, W, r, epsilon):
-    # Load the snapshot file
-    snapshots = np.load(snapshot_file)
-
-    # Project onto the POD basis to get q_p
-    q = U_p.T @ snapshots
-    q_p = q[:r, :]
-
-    # Reconstruct the snapshots using precomputed RBF weights
-    reconstructed_snapshots_rbf = []
-    for i in range(q_p.shape[1]):
-        q_p_sample = jnp.array(q_p[:, i].reshape(1, -1))  # Reshape to match input format for RBF
-        q_s_pred = interpolate_with_weights(jnp.array(q_p_train), jnp.array(W), q_p_sample, epsilon).T  # Use precomputed weights
-        reconstructed_snapshot_rbf = U_p @ q_p[:, i] + U_s @ q_s_pred.reshape(-1)
-        reconstructed_snapshots_rbf.append(reconstructed_snapshot_rbf)
-
-    # Convert list to array and return
-    reconstructed_snapshots_rbf = np.array(reconstructed_snapshots_rbf).squeeze().T
-    return reconstructed_snapshots_rbf
-
 if __name__ == '__main__':
     # Load the RBF model data (q_p_train and precomputed weights W)
     with open('rbf_weights.pkl', 'rb') as f:
@@ -82,9 +96,11 @@ if __name__ == '__main__':
     U_p = np.load('U_p.npy')
     U_s = np.load('U_s.npy')
 
+    epsilon = 1.0
+
     # Reconstruct the snapshot using precomputed RBF weights
     pod_rbf_reconstructed = reconstruct_snapshot_with_pod_rbf(
-        snapshot_file, U_p, U_s, q_p_train, W, 28, epsilon=1.0
+        snapshot_file, U_p, U_s, q_p_train.T, W, 28, epsilon
     )
 
     np.save("pod_rbf_reconstruction.npy", pod_rbf_reconstructed)
@@ -102,5 +118,4 @@ if __name__ == '__main__':
 
     # Create the combined GIF
     create_combined_gif(X, snapshot, pod_rbf_reconstructed, nTimeSteps, At, 28)
-
 

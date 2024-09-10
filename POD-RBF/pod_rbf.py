@@ -1,18 +1,16 @@
 import os
 import numpy as np
-import jax
-import jax.numpy as jnp
 import pickle
 
 # Function to compute the Gaussian RBF kernel
 def gaussian_rbf(r, epsilon):
     """Gaussian RBF kernel function."""
-    return jnp.exp(-(epsilon * r) ** 2)
+    return np.exp(-(epsilon * r) ** 2)
 
 # Function to compute pairwise Euclidean distances between two sets of points
 def compute_distances(X1, X2):
     """Compute pairwise Euclidean distances between two sets of points."""
-    dists = jnp.sqrt(jnp.sum((X1[:, None, :] - X2[None, :, :]) ** 2, axis=-1))
+    dists = np.sqrt(np.sum((X1[:, None, :] - X2[None, :, :]) ** 2, axis=-1))
     return dists
 
 # Function to compute the interpolation matrix Phi
@@ -26,9 +24,9 @@ def compute_interpolation_matrix(X_train, epsilon):
 def solve_for_weights(Phi, Y_train):
     """Solve for weights w in the system Phi * w = Y_train."""
     # Add a small regularization term to the diagonal for numerical stability
-    Phi += jnp.eye(Phi.shape[0]) * 1e-8
+    Phi += np.eye(Phi.shape[0]) * 1e-8
     # Solve the system
-    W = jnp.linalg.solve(Phi, Y_train)
+    W = np.linalg.solve(Phi, Y_train)
     return W
 
 # Function to interpolate using the precomputed weights
@@ -107,17 +105,13 @@ def remove_duplicates_optimized(X, threshold=1e-8):
 
 # Compute the interpolation matrix Phi for the training data
 epsilon = 1.0  # Set the epsilon parameter for the Gaussian RBF
-Phi = compute_interpolation_matrix(jnp.array(q_p), epsilon=epsilon)
+Phi = compute_interpolation_matrix(np.array(q_p.T), epsilon=epsilon)
 
 # Solve for the weights W
-W = solve_for_weights(Phi, jnp.array(q_s))  # W has shape (n_samples, output_dim)
+W = solve_for_weights(Phi, np.array(q_s.T))  # W has shape (n_samples, output_dim)
 
 # Save the weights and training inputs
 with open('rbf_weights.pkl', 'wb') as f:
     pickle.dump((q_p, W), f)
 
 print("RBF model weights have been saved successfully.")
-
-
-
-
