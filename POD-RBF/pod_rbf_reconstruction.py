@@ -100,7 +100,7 @@ if __name__ == '__main__':
 
     # Reconstruct the snapshot using precomputed RBF weights
     pod_rbf_reconstructed = reconstruct_snapshot_with_pod_rbf(
-        snapshot_file, U_p, U_s, q_p_train.T, W, 28, epsilon
+        snapshot_file, U_p, U_s, q_p_train, W, 28, epsilon
     )
 
     np.save("pod_rbf_reconstruction.npy", pod_rbf_reconstructed)

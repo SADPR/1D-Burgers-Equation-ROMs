@@ -100,18 +100,18 @@ def remove_duplicates_optimized(X, threshold=1e-8):
     return X[unique_indices], np.array(unique_indices)
 
 # Remove redundant points from q_p
-# q_p_train_unique, unique_indices = remove_duplicates_optimized(q_p.T)
-# q_s_train_unique = q_s.T[unique_indices]  # Match the secondary data to the unique principal modes
+q_p_train_unique, unique_indices = remove_duplicates_optimized(q_p.T)
+q_s_train_unique = q_s.T[unique_indices]  # Match the secondary data to the unique principal modes
 
 # Compute the interpolation matrix Phi for the training data
 epsilon = 1.0  # Set the epsilon parameter for the Gaussian RBF
-Phi = compute_interpolation_matrix(np.array(q_p.T), epsilon=epsilon)
+Phi = compute_interpolation_matrix(np.array(q_p_train_unique), epsilon=epsilon)
 
 # Solve for the weights W
-W = solve_for_weights(Phi, np.array(q_s.T))  # W has shape (n_samples, output_dim)
+W = solve_for_weights(Phi, np.array(q_s_train_unique))  # W has shape (n_samples, output_dim)
 
 # Save the weights and training inputs
 with open('rbf_weights.pkl', 'wb') as f:
-    pickle.dump((q_p, W), f)
+    pickle.dump((q_p_train_unique, W), f)
 
 print("RBF model weights have been saved successfully.")
