@@ -994,7 +994,7 @@ class FEMBurgers:
 
         return jacobian.detach() # Detach to prevent unnecessary computation graph tracking
 
-    def pod_rbf_prom(self, At, nTimeSteps, u0, uxa, E, mu2, U_p, U_s, q_p_train, W,  epsilon, projection="LSPG"):
+    def pod_rbf_prom(self, At, nTimeSteps, u0, uxa, E, mu2, U_p, U_s, q_p_train, W, epsilon, projection="LSPG"):
         """
         POD-RBF based PROM.
 
@@ -1023,141 +1023,135 @@ class FEMBurgers:
         # Initial condition
         U[:, 0] = u0
 
+        # Timing the mass and diffusion matrix computation
+        start_time = time.time()
         M = self.compute_mass_matrix()
         K = self.compute_diffusion_matrix()
+        end_time = time.time()
+        print(f"Time for mass and diffusion matrix computation: {end_time - start_time:.6f} seconds")
 
         for n in range(nTimeSteps):
-
             print(f"Time Step: {n}. Time: {n * At}")
+
+            start_time_step = time.time()
+
             U0 = U[:, n]
 
-            if n<0:
-                print("FOM")
-                # Full-Order Model (FOM) approach for the first three time steps in each sequence of four
-                error_U = 1
-                k = 0
-                while (error_U > 1e-6) and (k < 20):
-                    print(f"FOM Iteration {k}. Error: {error_U}")
+            # Project the current state onto the primary POD basis
+            start_time = time.time()
+            q_p = U_p.T @ U0
+            end_time = time.time()
+            print(f"Time for projection onto primary POD basis: {end_time - start_time:.6f} seconds")
 
-                    # Compute convection matrix using the current solution guess
-                    C = self.compute_convection_matrix(U0)
+            error_U = 1
+            k = 0
+            while (error_U > 5e-6) and (k < 100):
+                start_iteration = time.time()
 
-                    # Compute forcing vector
-                    F = self.compute_forcing_vector(mu2)
+                # Compute convection matrix
+                start_time = time.time()
+                C = self.compute_convection_matrix(U0)
+                end_time = time.time()
+                print(f"Time for convection matrix computation: {end_time - start_time:.6f} seconds")
 
-                    # Form the system matrix A and right-hand side vector b
-                    A = M + At * C + At * E * K
-                    b = M @ U[:, n] + At * F
+                # Compute forcing vector
+                start_time = time.time()
+                F = self.compute_forcing_vector(mu2)
+                end_time = time.time()
+                print(f"Time for forcing vector computation: {end_time - start_time:.6f} seconds")
 
-                    # Modify A and b for boundary conditions
-                    A[0, :] = 0
-                    A[0, 0] = 1
-                    b[0] = uxa
+                # Compute system matrix A
+                start_time = time.time()
+                A = M + At * C + At * E * K
+                A = A.tolil()  # Convert to LIL format for modification
+                end_time = time.time()
+                print(f"Time for system matrix A computation: {end_time - start_time:.6f} seconds")
 
-                    # Solve the full-order system
-                    U1 = spla.spsolve(A, b)
+                # Apply boundary conditions to A
+                A[0, :] = 0
+                A[0, 0] = 1
 
-                    # Compute the error to check for convergence
-                    error_U = np.linalg.norm(U1 - U0) / np.linalg.norm(U1)
+                # Compute right-hand side vector b
+                start_time = time.time()
+                b = M @ U[:, n] + At * F
+                b[0] = uxa  # Apply boundary conditions to b
+                end_time = time.time()
+                print(f"Time for right-hand side vector b computation: {end_time - start_time:.6f} seconds")
 
-                    # Update the guess for the next iteration
-                    U0 = U1
-                    k += 1
+                # Compute the residual R
+                start_time = time.time()
+                R = A @ U0 - b
+                end_time = time.time()
+                print(f"Time for residual R computation: {end_time - start_time:.6f} seconds")
 
-                # Plot the results for this time step
-                # plt.figure()
-                # plt.plot(self.X, U1, label=f'Time step {n + 1} (FOM)', color='red')
-                # plt.xlabel('x')
-                # plt.ylabel('u')
-                # plt.xlim(0,10)
-                # plt.title(f'FOM Solution at Time Step {n + 1}')
-                # plt.legend()
-                # plt.grid(True)
-                # plt.show()
+                # --- Time the Jacobian computation ---
+                start_time = time.time()
+                # Compute the Jacobian of the RBF interpolation with respect to q_p
+                rbf_jacobian = self.compute_rbf_jacobian(q_p_train, W, q_p, epsilon)
+                end_time = time.time()
+                print(f"Time for compute_rbf_jacobian: {end_time - start_time:.6f} seconds")
 
-                # Store the converged solution for this time step
-                U[:, n + 1] = U1
-            else:
-                print("PROM")
-                # Project the current state onto the primary POD basis
-                q_p = U_p.T @ U0
+                # Compute dD(u)/dq
+                start_time = time.time()
+                dD_u_dq = U_p + U_s @ rbf_jacobian
+                end_time = time.time()
+                print(f"Time for dD(u)/dq computation: {end_time - start_time:.6f} seconds")
 
-                error_U = 1
-                k = 0
-                while (error_U > 5e-6) and (k < 100):
-                    C = self.compute_convection_matrix(U0)
-                    F = self.compute_forcing_vector(mu2)
-                    A = M + At * C + At * E * K
+                # Project onto the reduced-order system
+                start_time = time.time()
+                if projection == "Galerkin":
+                    # Galerkin projection
+                    Ar = dD_u_dq.T @ A @ dD_u_dq
+                    br = dD_u_dq.T @ R
+                elif projection == "LSPG":
+                    # LSPG projection
+                    J_dD_u_dq = A @ dD_u_dq
+                    Ar = J_dD_u_dq.T @ J_dD_u_dq
+                    br = J_dD_u_dq.T @ R
+                end_time = time.time()
+                print(f"Time for reduced-order system projection: {end_time - start_time:.6f} seconds")
 
-                    # Convert to LIL format to modify the structure
-                    A = A.tolil()
+                # Solve the reduced-order system for q_p update
+                start_time = time.time()
+                delta_q_p = np.linalg.solve(Ar, -br)
+                end_time = time.time()
+                print(f"Time for solving reduced system: {end_time - start_time:.6f} seconds")
 
-                    # Modify A for boundary conditions
-                    A[0, :] = 0
-                    A[0, 0] = 1
+                # Update the reduced coordinates q_p
+                q_p += delta_q_p
 
-                    # Compute right-hand side vector b
-                    b = M @ U[:, n] + At * F
+                # --- Time the second RBF-based correction term calculation ---
+                start_time = time.time()
+                # Recompute q_s using the updated q_p
+                q_s = self.interpolate_with_rbf(q_p_train, W, q_p, epsilon)
+                end_time = time.time()
+                print(f"Time for interpolate_with_rbf (second): {end_time - start_time:.6f} seconds")
 
-                    # Modify b for boundary conditions
-                    b[0] = uxa
+                # Reconstruct the solution using the POD-RBF model
+                start_time = time.time()
+                U1 = U_p @ q_p + U_s @ q_s
+                end_time = time.time()
+                print(f"Time for solution reconstruction: {end_time - start_time:.6f} seconds")
 
-                    # Compute the residual R
-                    R = A @ U0 - b
+                # Compute the error and update the solution
+                error_U = np.linalg.norm(U1 - U0) / np.linalg.norm(U1)
+                print(f"PROM Iteration {k}. Error: {error_U}")
+                U0 = U1
+                k += 1
 
-                    # Compute the RBF-based correction term using the precomputed weights and the reduced coordinates q_p
-                    q_s = self.interpolate_with_rbf(q_p_train, W, q_p, epsilon)
+                end_iteration = time.time()
+                print(f"Time for PROM iteration {k}: {end_iteration - start_iteration:.6f} seconds")
 
-                    # Compute the Jacobian of the RBF interpolation with respect to q_p
-                    rbf_jacobian = self.compute_rbf_jacobian(q_p_train, W, q_p, epsilon)
+            # Store the converged solution for this time step
+            U[:, n + 1] = U1
 
-                    # Compute dD(u)/dq
-                    dD_u_dq = U_p + U_s @ rbf_jacobian
-
-                    if projection == "Galerkin":
-                        # Galerkin projection
-                        Ar = dD_u_dq.T @ A @ dD_u_dq
-                        br = dD_u_dq.T @ R
-                    elif projection == "LSPG":
-                        # LSPG projection
-                        J_dD_u_dq = A @ dD_u_dq
-                        Ar = J_dD_u_dq.T @ J_dD_u_dq
-                        br = J_dD_u_dq.T @ R
-
-                    # Solve the reduced-order system for q_s
-                    delta_q_p = np.linalg.solve(Ar, -br)
-
-                    # Update the reduced coordinates q_p
-                    q_p += delta_q_p
-
-                    # Recompute q_s using the updated q_p
-                    q_s = self.interpolate_with_rbf(q_p_train, W, q_p, epsilon)
-
-                    # Reconstruct the solution using the POD-RBF model
-                    U1 = U_p @ q_p + U_s @ q_s
-
-                    # Compute the error and update the solution
-                    error_U = np.linalg.norm(U1 - U0) / np.linalg.norm(U1)
-                    print(f"PROM Iteration {k}. Error: {error_U}")
-                    U0 = U1
-                    k += 1
-
-                # plt.figure()
-                # plt.plot(self.X, U1, label=f'Time step {n + 1} (PROM)', color='red')
-                # plt.xlabel('x')
-                # plt.ylabel('u')
-                # plt.xlim(0,10)
-                # plt.title(f'PROM Solution at Time Step {n + 1}')
-                # plt.legend()
-                # plt.grid(True)
-                # plt.show()
-
-                # Store the converged solution for this time step
-                U[:, n + 1] = U1
+            end_time_step = time.time()
+            print(f"Time for time step {n}: {end_time_step - start_time_step:.6f} seconds")
 
         return U
 
-    def compute_rbf_jacobian(self, q_p_train, W, q_p_sample, epsilon):
+
+    def compute_rbf_jacobian_(self, q_p_train, W, q_p_sample, epsilon):
         """
         Compute the Jacobian of the RBF interpolation with respect to q_p.
 
@@ -1193,7 +1187,7 @@ class FEMBurgers:
 
         return jacobian
 
-    def interpolate_with_rbf(self, q_p_train, W, q_p_sample, epsilon):
+    def interpolate_with_rbf_(self, q_p_train, W, q_p_sample, epsilon):
         """
         Interpolate the secondary modes q_s using RBF interpolation.
 
@@ -1211,6 +1205,86 @@ class FEMBurgers:
 
         # Compute the RBF kernel values (Gaussian RBF)
         rbf_values = np.exp(-(epsilon * dists) ** 2)  # Shape: (n_train,)
+
+        # Compute the predicted secondary modes by multiplying the RBF values with the precomputed weights
+        q_s_pred = rbf_values @ W  # Shape: (output_dim,)
+
+        return q_s_pred
+
+    def compute_rbf_jacobian(self, q_p_train, W, q_p_sample, epsilon):
+        """
+        Compute the Jacobian of the RBF interpolation with respect to q_p.
+
+        Parameters:
+        - q_p_train: Training data for principal modes.
+        - W: Precomputed weights for secondary modes.
+        - q_p_sample: The input sample point (reduced coordinates, q_p).
+        - epsilon: The width parameter for the RBF kernel.
+
+        Returns:
+        - jacobian: The Jacobian matrix of the RBF's output with respect to q_p.
+        """
+        N = q_p_train.shape[0]  # Number of training points
+        input_dim = q_p_train.shape[1]  # Dimension of the input (q_p)
+        output_dim = W.shape[1]  # Dimension of the output (q_s)
+
+        # Initialize the Jacobian matrix
+        jacobian = np.zeros((output_dim, input_dim))  # Shape: (273, 28)
+
+        # Set a tolerance and threshold for numerical stability
+        threshold = 1e-10  # Threshold to skip very small RBF values
+        tolerance = 1e-10  # Tolerance for near-zero distances
+
+        # Precompute distances between q_p_sample and all q_p_train points
+        distances = np.linalg.norm(q_p_train - q_p_sample, axis=1)
+
+        # Precompute RBF kernel values
+        phi_r = np.exp(-(epsilon * distances) ** 2)
+
+        # Compute Jacobian contributions for each training point
+        for i in range(N):
+            # If the distance is too small, skip or handle separately
+            if distances[i] < tolerance:
+                continue
+
+            # Skip very small RBF kernel values to avoid numerical instability
+            if np.abs(phi_r[i]) < threshold:
+                continue
+
+            # Derivative of the RBF kernel with respect to q_p_sample
+            dphi_dq_p = -2 * epsilon**2 * (q_p_sample - q_p_train[i]) * phi_r[i]
+
+            # Outer product to compute the contribution to the Jacobian
+            jacobian += np.outer(W[i], dphi_dq_p)
+
+        return jacobian
+
+    def compute_distances(self, X1, X2):
+        """Compute pairwise Euclidean distances between two sets of points."""
+        return np.linalg.norm(X1 - X2, axis=1)
+
+    def gaussian_rbf(self, r, epsilon):
+        """Gaussian RBF kernel function."""
+        return np.exp(-(epsilon * r) ** 2)
+
+    def interpolate_with_rbf(self, q_p_train, W, q_p_sample, epsilon):
+        """
+        Interpolate the secondary modes q_s using RBF interpolation.
+
+        Parameters:
+        - q_p_train: Training data for principal modes.
+        - W: Precomputed weights for secondary modes.
+        - q_p_sample: The input sample point (reduced coordinates, q_p).
+        - epsilon: The width parameter for the RBF kernel.
+
+        Returns:
+        - q_s_pred: The predicted secondary modes for the given q_p_sample.
+        """
+        # Compute distances between the sample point and the training points
+        dists = self.compute_distances(q_p_train, q_p_sample)  # Shape: (n_train,)
+
+        # Compute the RBF kernel values (Gaussian RBF)
+        rbf_values = self.gaussian_rbf(dists, epsilon)  # Shape: (n_train,)
 
         # Compute the predicted secondary modes by multiplying the RBF values with the precomputed weights
         q_s_pred = rbf_values @ W  # Shape: (output_dim,)
