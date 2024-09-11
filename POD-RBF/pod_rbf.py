@@ -40,12 +40,38 @@ def interpolate_with_weights(X_train, W, x_new, epsilon):
     f_new = rbf_values @ W  # Shape: (output_dim,)
     return f_new
 
-# Hardcoded list of filenames
+# # Hardcoded list of filenames
+# hardcoded_files = [
+#     'simulation_mu1_4.76_mu2_0.0181.npy',
+#     'simulation_mu1_4.76_mu2_0.0182.npy',
+#     'simulation_mu1_4.76_mu2_0.0240.npy',
+#     'simulation_mu1_4.76_mu2_0.0290.npy'
+# ]
+# Define the hardcoded list of filenames
 hardcoded_files = [
+    'simulation_mu1_4.75_mu2_0.0164.npy',
+    'simulation_mu1_4.75_mu2_0.0225.npy',
+    'simulation_mu1_4.75_mu2_0.0243.npy',
+    'simulation_mu1_4.75_mu2_0.0282.npy',
     'simulation_mu1_4.76_mu2_0.0181.npy',
     'simulation_mu1_4.76_mu2_0.0182.npy',
     'simulation_mu1_4.76_mu2_0.0240.npy',
-    'simulation_mu1_4.76_mu2_0.0290.npy'
+    'simulation_mu1_4.76_mu2_0.0290.npy',
+    'simulation_mu1_4.77_mu2_0.0244.npy',
+    'simulation_mu1_4.77_mu2_0.0250.npy',
+    'simulation_mu1_4.77_mu2_0.0293.npy',
+    'simulation_mu1_4.78_mu2_0.0156.npy',
+    'simulation_mu1_4.78_mu2_0.0170.npy',
+    'simulation_mu1_4.78_mu2_0.0212.npy',
+    'simulation_mu1_4.78_mu2_0.0274.npy',
+    'simulation_mu1_4.78_mu2_0.0279.npy',
+    'simulation_mu1_4.79_mu2_0.0210.npy',
+    'simulation_mu1_4.79_mu2_0.0248.npy',
+    'simulation_mu1_4.79_mu2_0.0284.npy',
+    'simulation_mu1_4.79_mu2_0.0287.npy',
+    'simulation_mu1_4.80_mu2_0.0186.npy',
+    'simulation_mu1_4.80_mu2_0.0191.npy',
+    'simulation_mu1_4.80_mu2_0.0221.npy'
 ]
 
 # Load snapshot data
@@ -100,18 +126,18 @@ def remove_duplicates_optimized(X, threshold=1e-8):
     return X[unique_indices], np.array(unique_indices)
 
 # Remove redundant points from q_p
-q_p_train_unique, unique_indices = remove_duplicates_optimized(q_p.T)
-q_s_train_unique = q_s.T[unique_indices]  # Match the secondary data to the unique principal modes
+# q_p_train_unique, unique_indices = remove_duplicates_optimized(q_p.T)
+# q_s_train_unique = q_s.T[unique_indices]  # Match the secondary data to the unique principal modes
 
 # Compute the interpolation matrix Phi for the training data
 epsilon = 1.0  # Set the epsilon parameter for the Gaussian RBF
-Phi = compute_interpolation_matrix(np.array(q_p_train_unique), epsilon=epsilon)
+Phi = compute_interpolation_matrix(np.array(q_p.T), epsilon=epsilon)
 
 # Solve for the weights W
-W = solve_for_weights(Phi, np.array(q_s_train_unique))  # W has shape (n_samples, output_dim)
+W = solve_for_weights(Phi, np.array(q_s.T))  # W has shape (n_samples, output_dim)
 
 # Save the weights and training inputs
 with open('rbf_weights.pkl', 'wb') as f:
-    pickle.dump((q_p_train_unique, W), f)
+    pickle.dump((q_p.T, W), f)
 
 print("RBF model weights have been saved successfully.")

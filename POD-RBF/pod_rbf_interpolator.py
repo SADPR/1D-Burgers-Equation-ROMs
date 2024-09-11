@@ -112,10 +112,11 @@ def remove_duplicates_optimized(X, threshold=1e-8):
 # Remove redundant points from q_p
 q_p_train_unique, unique_indices = remove_duplicates_optimized(q_p.T)
 q_s_train_unique = q_s.T[unique_indices]  # Match the secondary data to the unique principal modes
+print("Hey")
 
 # Train the RBF model on the entire (cleaned) training dataset
 # Use all unique training data without regularization
-rbf_interp = RBFInterpolator(q_p_train_unique, q_s_train_unique, kernel='gaussian', epsilon=2.0, neighbors=50)
+rbf_interp = RBFInterpolator(q_p_train_unique, q_s_train_unique, kernel='gaussian', epsilon=2.0, neighbors=100)
 
 # Save the trained RBF model to a file
 with open('rbf_model.pkl', 'wb') as f:

@@ -58,8 +58,8 @@ if __name__ == '__main__':
         rbf_model = pickle.load(f)
 
     # Load a random snapshot from the training_data directory
-    # snapshot_file = '../FEM/training_data/simulation_mu1_4.76_mu2_0.0182.npy'
-    snapshot_file = 'simulation_mu1_4.77_mu2_0.0200.npy'
+    snapshot_file = '../FEM/training_data/simulation_mu1_4.76_mu2_0.0182.npy'
+    # snapshot_file = 'simulation_mu1_4.77_mu2_0.0200.npy'
     snapshot = np.load(snapshot_file)
 
     # Load U_p and U_s
