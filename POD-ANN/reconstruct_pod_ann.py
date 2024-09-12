@@ -105,7 +105,8 @@ if __name__ == '__main__':
     # std = np.std(all_snapshots)
 
     # Load a random snapshot from the training_data directory
-    snapshot_file = '../FEM/training_data/simulation_mu1_4.76_mu2_0.0182.npy'
+    # snapshot_file = '../FEM/training_data/simulation_mu1_4.76_mu2_0.0182.npy'
+    snapshot_file = '../FEM/testing_data/simulations/simulation_mu1_4.85_mu2_0.0222.npy'
     snapshot = np.load(snapshot_file)
 
     # Prepare training data for POD-ANN
@@ -129,9 +130,14 @@ if __name__ == '__main__':
     # pod_ann_reconstructed = reconstruct_snapshot_with_pod_ann(
     #     snapshot_file, U, U_p, U_s, pod_ann_model, 28, q_p_mean, q_p_std, q_s_mean, q_s_std
     # )
+    import time
+    start = time.time()
     pod_ann_reconstructed = reconstruct_snapshot_with_pod_ann(
         snapshot_file, U, U_p, U_s, pod_ann_model, 28
     )
+    end = time.time()
+    print(f"Time {start-end}")
+    print(f"Error: {np.linalg.norm(snapshot-pod_ann_reconstructed)/np.linalg.norm(snapshot)}")
 
     np.save("pod_ann_reconstruction.npy", pod_ann_reconstructed)
 
