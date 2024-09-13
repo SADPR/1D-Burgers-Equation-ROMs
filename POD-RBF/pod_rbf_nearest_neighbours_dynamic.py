@@ -87,11 +87,11 @@ def remove_duplicates(data, tolerance=1e-8):
 
 # Assuming q_p and q_s_train are your data matrices with shapes (r, num_samples) and (s, num_samples) respectively
 # Find unique indices based on q_p
-# unique_indices = remove_duplicates(q_p.T)
+unique_indices = remove_duplicates(q_p.T)
 
-# # Use only the unique data points for both q_p and q_s_train using the unique indices
-# q_p = q_p[:, unique_indices]  # Shape (r, unique_samples)
-# q_s = q_s[:, unique_indices]  # Shape (s, unique_samples)
+# Use only the unique data points for both q_p and q_s_train using the unique indices
+q_p = q_p[:, unique_indices]  # Shape (r, unique_samples)
+q_s = q_s[:, unique_indices]  # Shape (s, unique_samples)
 
 # Build the KDTree using unique q_p points
 kdtree = KDTree(q_p.T)

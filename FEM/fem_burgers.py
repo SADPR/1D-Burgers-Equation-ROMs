@@ -6,6 +6,7 @@ import torch
 from torch.autograd import grad
 from scipy.sparse import lil_matrix
 import matplotlib.pyplot as plt
+from scipy.spatial.distance import pdist, squareform
 
 def get_sym(qi):
     ''' Auxiliary function to get the symmetric part of q kron q '''
@@ -1376,7 +1377,7 @@ class FEMBurgers:
 
             error_U = 1
             k = 0
-            while (error_U > 5e-6) and (k < 100):
+            while (error_U > 1e-6) and (k < 100):
                 C = self.compute_convection_matrix(U0)
                 F = self.compute_forcing_vector(mu2)
                 A = M + At * C + At * E * K
@@ -1436,7 +1437,7 @@ class FEMBurgers:
 
         return U
 
-    def compute_rbf_jacobian_nearest_neighbours_dynamic(self, kdtree, q_p_train, q_s_train, q_p_sample, epsilon, neighbors):
+    def compute_rbf_jacobian_nearest_neighbours_dynamic_(self, kdtree, q_p_train, q_s_train, q_p_sample, epsilon, neighbors):
         """
         Compute the Jacobian of the RBF interpolation with respect to q_p using nearest neighbors dynamically.
 
@@ -1483,7 +1484,7 @@ class FEMBurgers:
 
         return jacobian
 
-    def interpolate_with_rbf_nearest_neighbours_dynamic(self, kdtree, q_p_train, q_s_train, q_p_sample, epsilon, neighbors):
+    def interpolate_with_rbf_nearest_neighbours_dynamic_(self, kdtree, q_p_train, q_s_train, q_p_sample, epsilon, neighbors):
         """
         Interpolate the secondary modes q_s using nearest neighbors and RBF interpolation dynamically.
 
@@ -1525,3 +1526,89 @@ class FEMBurgers:
 
         return q_s_pred
 
+    def compute_rbf_jacobian_nearest_neighbours_dynamic(self, kdtree, q_p_train, q_s_train, q_p_sample, epsilon, neighbors):
+        """
+        Compute the Jacobian of the RBF interpolation with respect to q_p using nearest neighbors dynamically.
+
+        Parameters:
+        - kdtree: KDTree to find nearest neighbors.
+        - q_p_train: Training data for principal modes.
+        - q_s_train: Training data for secondary modes.
+        - q_p_sample: The input sample point (reduced coordinates, q_p).
+        - epsilon: The width parameter for the RBF kernel.
+        - neighbors: Number of nearest neighbors to use.
+
+        Returns:
+        - jacobian: The Jacobian matrix of the RBF's output with respect to q_p.
+        """
+        # Find the nearest neighbors in q_p_train
+        dist, idx = kdtree.query(q_p_sample.reshape(1, -1), k=neighbors)
+
+        # Extract the neighbor points and corresponding secondary modes
+        q_p_neighbors = q_p_train[idx].reshape(neighbors, -1)
+        q_s_neighbors = q_s_train[idx].reshape(neighbors, -1)
+
+        # Compute pairwise distances between neighbors using pdist
+        dists_neighbors = squareform(pdist(q_p_neighbors))
+
+        # Compute the RBF matrix for the neighbors
+        Phi_neighbors = self.gaussian_rbf(dists_neighbors, epsilon)
+
+        # Regularization for numerical stability
+        Phi_neighbors += np.eye(neighbors) * 1e-8
+
+        # Solve for the RBF weights (W_neighbors)
+        W_neighbors = np.linalg.solve(Phi_neighbors, q_s_neighbors)
+
+        # Compute RBF kernel values between q_p_sample and its neighbors
+        rbf_values = self.gaussian_rbf(dist.flatten(), epsilon)
+
+        # Compute the Jacobian by multiplying weights and RBF kernel derivatives
+        jacobian = np.zeros((q_s_neighbors.shape[1], q_p_neighbors.shape[1]))
+        for i in range(neighbors):
+            dphi_dq_p = -2 * epsilon**2 * (q_p_sample - q_p_neighbors[i]) * rbf_values[i]
+            jacobian += np.outer(W_neighbors[i], dphi_dq_p)
+
+        return jacobian
+
+    def interpolate_with_rbf_nearest_neighbours_dynamic(self, kdtree, q_p_train, q_s_train, q_p_sample, epsilon, neighbors):
+        """
+        Interpolate the secondary modes q_s using nearest neighbors and RBF interpolation dynamically.
+
+        Parameters:
+        - kdtree: KDTree to find nearest neighbors.
+        - q_p_train: Training data for principal modes.
+        - q_s_train: Training data for secondary modes.
+        - q_p_sample: The input sample point (reduced coordinates, q_p).
+        - epsilon: The width parameter for the RBF kernel.
+        - neighbors: Number of nearest neighbors to use.
+
+        Returns:
+        - q_s_pred: The predicted secondary modes for the given q_p_sample.
+        """
+        # Find the nearest neighbors in q_p_train
+        dist, idx = kdtree.query(q_p_sample.reshape(1, -1), k=neighbors)
+
+        # Extract the neighbor points and corresponding secondary modes
+        q_p_neighbors = q_p_train[idx].reshape(neighbors, -1)
+        q_s_neighbors = q_s_train[idx].reshape(neighbors, -1)
+
+        # Compute pairwise distances between the neighbors
+        dists_neighbors = squareform(pdist(q_p_neighbors))
+
+        # Compute the RBF matrix for the neighbors
+        Phi_neighbors = self.gaussian_rbf(dists_neighbors, epsilon)
+
+        # Regularization for numerical stability
+        Phi_neighbors += np.eye(neighbors) * 1e-8
+
+        # Solve for the RBF weights (W_neighbors)
+        W_neighbors = np.linalg.solve(Phi_neighbors, q_s_neighbors)
+
+        # Compute RBF kernel values between q_p_sample and its neighbors
+        rbf_values = self.gaussian_rbf(dist.flatten(), epsilon)
+
+        # Interpolate q_s using the precomputed weights and RBF kernel values
+        q_s_pred = rbf_values @ W_neighbors
+
+        return q_s_pred

@@ -2,61 +2,73 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.spatial import KDTree
 import pickle
-
-# Function to compute Euclidean distances between two sets of points
-def compute_distances(X1, X2):
-    """Compute pairwise Euclidean distances between two sets of points."""
-    return np.sqrt(np.sum((X1 - X2) ** 2, axis=1))
+import time
 
 # Function to compute the Gaussian RBF kernel
 def gaussian_rbf(r, epsilon):
     """Gaussian RBF kernel function."""
     return np.exp(-(epsilon * r) ** 2)
 
-# Function to interpolate dynamically and compute the Jacobian on the fly
+# Optimized function to interpolate dynamically and compute the Jacobian on the fly
 def interpolate_and_compute_jacobian(kdtree, q_p_train, q_s_train, q_p_sample, epsilon, neighbors):
     """Interpolate at new points and compute the Jacobian on the fly using nearest neighbors."""
-    dist, idx = kdtree.query(q_p_sample, k=neighbors)  # Find nearest neighbors
+    start_time = time.time()
+
+    # Find the nearest neighbors for the new point
+    dist, idx = kdtree.query(q_p_sample, k=neighbors)
+    query_time = time.time()
+    print(f"KDTree query took: {query_time - start_time:.6f} seconds")
 
     # Extract the neighbor points
     X_neighbors = q_p_train[idx].reshape(neighbors, -1)
     Y_neighbors = q_s_train[idx, :].reshape(neighbors, -1)
+    extract_time = time.time()
+    print(f"Extracting neighbors took: {extract_time - query_time:.6f} seconds")
 
-    # Compute the pairwise distances between neighbors (to form the Phi matrix)
+    # Compute pairwise distances between neighbors using pdist for constructing the Phi matrix
     dists_neighbors = np.linalg.norm(X_neighbors[:, None, :] - X_neighbors[None, :, :], axis=-1)
+    dist_time = time.time()
+    print(f"Distance calculations took: {dist_time - extract_time:.6f} seconds")
 
     # Compute the RBF matrix for the neighbors (Phi matrix)
     Phi_neighbors = gaussian_rbf(dists_neighbors, epsilon)
     Phi_neighbors += np.eye(neighbors) * 1e-8  # Regularization for numerical stability
+    rbf_matrix_time = time.time()
+    print(f"RBF matrix computation took: {rbf_matrix_time - dist_time:.6f} seconds")
 
     # Solve for the weights using Y_neighbors
     W_neighbors = np.linalg.solve(Phi_neighbors, Y_neighbors)
+    solve_time = time.time()
+    print(f"Solving the linear system took: {solve_time - rbf_matrix_time:.6f} seconds")
 
     # Compute RBF values between q_p_sample and its neighbors
     rbf_values = gaussian_rbf(dist, epsilon)
+    rbf_eval_time = time.time()
+    print(f"RBF evaluation for new point took: {rbf_eval_time - solve_time:.6f} seconds")
 
-    # Compute interpolated value
+    # Interpolate the new value
     f_new = rbf_values @ W_neighbors
+    interp_time = time.time()
+    print(f"Interpolation step took: {interp_time - rbf_eval_time:.6f} seconds")
 
     # Compute the Jacobian dynamically
     input_dim = q_p_train.shape[1]
     output_dim = q_s_train.shape[1]
     jacobian = np.zeros((output_dim, input_dim))
 
-    # For each neighbor, compute the contribution to the Jacobian
+    # Compute the Jacobian by iterating through the neighbors
     for i in range(neighbors):
         q_p_i = X_neighbors[i]
-        r_i = compute_distances(q_p_sample, q_p_i.reshape(1, -1))  # Distance between q_p_sample and q_p_i
+        r_i = np.linalg.norm(q_p_sample - q_p_i.reshape(1, -1))
 
-        # RBF kernel value
+        # Compute RBF kernel value and its derivative
         phi_r_i = gaussian_rbf(r_i, epsilon)
-
         if np.abs(phi_r_i) > 1e-6:
-            # Derivative of the RBF kernel with respect to q_p_sample
             dphi_dq_p = -2 * epsilon**2 * (q_p_sample - q_p_i) * phi_r_i
-
-            # Outer product to compute the contribution to the Jacobian
             jacobian += np.outer(W_neighbors[i], dphi_dq_p)
+
+    jacobian_time = time.time()
+    print(f"Jacobian computation took: {jacobian_time - interp_time:.6f} seconds")
 
     return f_new, jacobian
 
@@ -115,7 +127,7 @@ if __name__ == '__main__':
     # Load the snapshot data and select a specific column, e.g., column 100
     snapshot_file = '../FEM/training_data/simulation_mu1_4.76_mu2_0.0182.npy'
     snapshot = np.load(snapshot_file)  # Assuming the snapshot is in the correct shape
-    snapshot_column = snapshot[:, 10]
+    snapshot_column = snapshot[:, 0]
 
     # Load U_p (primary POD basis)
     U_p = np.load('U_p.npy')
@@ -129,10 +141,5 @@ if __name__ == '__main__':
 
     # Perform gradient check for the POD-RBF model
     gradient_check_pod_rbf(U_p, snapshot_column, q_p_train, q_s_train, epsilon_values, epsilon, kdtree, neighbors)
-
-
-
-
-
 
 

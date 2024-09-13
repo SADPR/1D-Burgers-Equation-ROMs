@@ -59,9 +59,13 @@ if __name__ == "__main__":
 
     # Solution using POD-RBF-based PROM with nearest neighbors dynamic interpolation
     print('POD-RBF PROM method...')
+    import time
+    start = time.time()
     U_POD_RBF_PROM = fem_burgers.pod_rbf_prom_nearest_neighbours_dynamic(
         At, nTimeSteps, u0, uxa, E, mu2, U_p, U_s, q_p_train, q_s_train, kdtree, epsilon=1.0, neighbors=100
     )
+    end = time.time()
+    print(f"Time taken: {end-start}")
 
     # Save the solution as a .npy file
     np.save("U_POD_RBF_PROM_solution.npy", U_POD_RBF_PROM)
@@ -84,7 +88,7 @@ if __name__ == "__main__":
     ani = FuncAnimation(fig, update, frames=nTimeSteps + 1, blit=True)
 
     # Save animation as GIF
-    ani.save("burgers_equation_prom_rbf.gif", writer=PillowWriter(fps=10))
+    # ani.save("burgers_equation_prom_rbf.gif", writer=PillowWriter(fps=10))
 
     plt.show()
 
