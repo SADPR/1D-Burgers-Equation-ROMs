@@ -62,7 +62,7 @@ if __name__ == "__main__":
     import time
     start = time.time()
     U_POD_RBF_PROM = fem_burgers.pod_rbf_prom_nearest_neighbours_dynamic(
-        At, nTimeSteps, u0, uxa, E, mu2, U_p, U_s, q_p_train, q_s_train, kdtree, epsilon=1.0, neighbors=100
+        At, nTimeSteps, u0, uxa, E, mu2, U_p, U_s, q_p_train, q_s_train, kdtree, epsilon=1.0, neighbors=20
     )
     end = time.time()
     print(f"Time taken: {end-start}")
