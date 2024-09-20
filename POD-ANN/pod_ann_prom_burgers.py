@@ -78,7 +78,13 @@ if __name__ == "__main__":
 
     # Solution using POD-ANN-based PROM
     print('POD-ANN PROM method...')
+    import time
+    start = time.time()
+    
     U_POD_ANN_PROM = fem_burgers.pod_ann_prom(At, nTimeSteps, u0, uxa, E, mu2, U_p, U_s, model)
+
+    end = time.time()
+    print(f"Time taken: {end-start}")
 
     # Save the solution as a .npy file
     np.save("U_POD_ANN_PROM_solution.npy", U_POD_ANN_PROM)
