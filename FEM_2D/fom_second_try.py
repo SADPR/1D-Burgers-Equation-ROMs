@@ -4,6 +4,7 @@ import scipy.sparse.linalg as spla
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 import time
+from numba import njit, prange
 
 def plot_2d_cuts(U, X, Y, line='x', fixed_value=50.0):
     """
@@ -78,6 +79,23 @@ def plot_3d_surface(U, X, Y):
     fig.colorbar(surf)
     plt.show()
 
+@njit
+def dN_dxi_numba(xi, eta):
+    # Define the derivative of the shape functions here
+    return 0.25 * np.array([[-(1 - eta), -(1 - xi)], 
+                            [(1 - eta), -(1 + xi)], 
+                            [(1 + eta), (1 + xi)], 
+                            [-(1 + eta), (1 - xi)]])
+
+# Numba-compatible shape functions
+@njit
+def N_numba(xi, eta):
+    return 0.25 * np.array([
+        (1 - xi) * (1 - eta),
+        (1 + xi) * (1 - eta),
+        (1 + xi) * (1 + eta),
+        (1 - xi) * (1 + eta)
+    ])
 
 class FEMBurgers2D:
     def __init__(self, X, Y, T):
@@ -96,8 +114,9 @@ class FEMBurgers2D:
                                                        [(1 - eta), -(1 + xi)],
                                                        [(1 + eta), (1 + xi)],
                                                        [-(1 + eta), (1 - xi)]])
+        self.n_local_nodes = self.T.shape[1]  # Number of local nodes per element
 
-    def compute_mass_matrix(self):
+    def compute_mass_matrix_(self):
         n_nodes = len(self.X)  # Total number of nodes
         n_elements, n_local_nodes = self.T.shape  # Number of elements and local nodes per element
         M_global = sp.lil_matrix((2 * n_nodes, 2 * n_nodes))  # Initialize global mass matrix
@@ -140,7 +159,130 @@ class FEMBurgers2D:
 
         return M_global.tocsc()  # Convert to sparse format for efficiency
 
-    def compute_diffusion_matrix(self):
+    def compute_mass_matrix(self):
+        n_nodes = len(self.X)  # Total number of nodes
+        n_elements, n_local_nodes = self.T.shape  # Number of elements and local nodes per element
+
+        # Initialize a dense array to accumulate local matrices
+        M_global_x = np.zeros((n_nodes, n_nodes))  # For u_x component
+        M_global_y = np.zeros((n_nodes, n_nodes))  # For u_y component
+
+        for elem in range(n_elements):
+            element_nodes = self.T[elem, :] - 1  # Adjusted for 0-based indexing
+            x_element = self.X[element_nodes]
+            y_element = self.Y[element_nodes]
+
+            M_element = np.zeros((n_local_nodes, n_local_nodes))  # Initialize local mass matrix
+
+            # Precompute shape functions and volume for each Gauss point
+            for i in range(self.ngaus):
+                for j in range(self.ngaus):
+                    xi = self.zgp[i]
+                    eta = self.zgp[j]
+                    N_gp = self.N(xi, eta)  # Shape functions at the Gauss point
+
+                    dN_dxi_gp = self.dN_dxi(xi, eta)  # Shape function derivatives wrt reference coordinates
+                    J = dN_dxi_gp.T @ np.vstack((x_element, y_element)).T  # Jacobian matrix
+                    detJ = np.linalg.det(J)
+
+                    dV = self.wgp[i] * self.wgp[j] * detJ  # Differential volume
+
+                    M_element += np.outer(N_gp, N_gp) * dV
+
+            # Assemble the local matrix into the global mass matrix for both u_x and u_y components
+            for a in range(n_local_nodes):
+                for b in range(n_local_nodes):
+                    M_global_x[element_nodes[a], element_nodes[b]] += M_element[a, b]
+                    M_global_y[element_nodes[a], element_nodes[b]] += M_element[a, b]
+
+        # Combine u_x and u_y into the final block sparse matrix
+        M_global = sp.bmat([[sp.csc_matrix(M_global_x), None], [None, sp.csc_matrix(M_global_y)]])
+
+        return M_global.tocsc()  # Convert to sparse format for efficiency
+
+    def compute_mass_matrix(self):
+        n_nodes = len(self.X)
+        n_elements = self.T.shape[0]
+        n_local_nodes = self.n_local_nodes
+        total_entries = 2 * n_elements * n_local_nodes * n_local_nodes  # For u_x and u_y components
+
+        I_data = np.zeros(total_entries, dtype=np.int32)
+        J_data = np.zeros(total_entries, dtype=np.int32)
+        V_data = np.zeros(total_entries)
+
+        X = self.X
+        Y = self.Y
+        T = self.T - 1  # Adjusted for 0-based indexing
+        ngaus = self.ngaus
+        zgp = self.zgp
+        wgp = self.wgp
+
+        # Precompute shape functions and their products at Gauss points
+        N_values = np.zeros((ngaus, ngaus, n_local_nodes))
+        N_outer = np.zeros((ngaus, ngaus, n_local_nodes, n_local_nodes))
+        for i in range(ngaus):
+            for j in range(ngaus):
+                xi = zgp[i]
+                eta = zgp[j]
+                N_gp = N_numba(xi, eta)
+                N_values[i, j, :] = N_gp
+                N_outer[i, j, :, :] = np.outer(N_gp, N_gp)
+
+        # Numba-compiled function for assembly
+        @njit(parallel=True)
+        def assemble_mass_matrix(I_data, J_data, V_data, X, Y, T, n_elements, n_local_nodes, N_values, N_outer, zgp, wgp, n_nodes):
+            for elem in prange(n_elements):
+                element_nodes = T[elem, :]
+                x_element = X[element_nodes]
+                y_element = Y[element_nodes]
+                M_element = np.zeros((n_local_nodes, n_local_nodes))
+                for i in range(ngaus):
+                    for j in range(ngaus):
+                        xi = zgp[i]
+                        eta = zgp[j]
+                        N_gp = N_values[i, j, :]
+                        dN_dxi_gp = dN_dxi_numba(xi, eta)  # Shape (n_local_nodes, 2)
+                        J = np.zeros((2, 2))
+                        for a in range(n_local_nodes):
+                            J[0, 0] += dN_dxi_gp[a, 0] * x_element[a]
+                            J[0, 1] += dN_dxi_gp[a, 0] * y_element[a]
+                            J[1, 0] += dN_dxi_gp[a, 1] * x_element[a]
+                            J[1, 1] += dN_dxi_gp[a, 1] * y_element[a]
+                        detJ = J[0, 0] * J[1, 1] - J[0, 1] * J[1, 0]
+                        dV = wgp[i] * wgp[j] * detJ
+                        M_element += N_outer[i, j, :, :] * dV
+                # Assemble M_element into global matrix entries
+                idx_elem = elem * n_local_nodes * n_local_nodes * 2
+                idx = idx_elem
+                for a in range(n_local_nodes):
+                    global_a_x = element_nodes[a]
+                    global_a_y = element_nodes[a] + n_nodes
+                    for b in range(n_local_nodes):
+                        global_b_x = element_nodes[b]
+                        global_b_y = element_nodes[b] + n_nodes
+                        value = M_element[a, b]
+                        # For u_x component
+                        I_data[idx] = global_a_x
+                        J_data[idx] = global_b_x
+                        V_data[idx] = value
+                        idx += 1
+                        # For u_y component
+                        I_data[idx] = global_a_y
+                        J_data[idx] = global_b_y
+                        V_data[idx] = value
+                        idx += 1
+
+        # Call the Numba-compiled assembly function
+        assemble_mass_matrix(
+            I_data, J_data, V_data, X, Y, T, n_elements,
+            n_local_nodes, N_values, N_outer, zgp, wgp, n_nodes
+        )
+
+        # Create the sparse global mass matrix
+        M_global = sp.coo_matrix((V_data, (I_data, J_data)), shape=(2 * n_nodes, 2 * n_nodes)).tocsc()
+        return M_global
+    
+    def compute_diffusion_matrix_(self):
         n_nodes = len(self.X)  # Total number of nodes
         n_elements, n_local_nodes = self.T.shape  # Number of elements and local nodes per element
         K_global = sp.lil_matrix((2 * n_nodes, 2 * n_nodes))  # Initialize global diffusion matrix
@@ -191,6 +333,94 @@ class FEMBurgers2D:
                 print(f"Diffusion Assembled element {elem + 1}/{n_elements}")
 
         return K_global.tocsc()  # Convert to sparse format for efficiency
+    
+    def compute_diffusion_matrix(self):
+        n_nodes = len(self.X)
+        n_elements = self.T.shape[0]
+        n_local_nodes = self.n_local_nodes
+        total_entries = 2 * n_elements * n_local_nodes * n_local_nodes  # For u_x and u_y components
+
+        I_data = np.zeros(total_entries, dtype=np.int32)
+        J_data = np.zeros(total_entries, dtype=np.int32)
+        V_data = np.zeros(total_entries)
+
+        X = self.X
+        Y = self.Y
+        T = self.T - 1  # Adjusted for 0-based indexing
+        ngaus = self.ngaus
+        zgp = self.zgp
+        wgp = self.wgp
+
+        # Precompute shape functions and derivatives at Gauss points
+        N_values = np.zeros((ngaus, ngaus, n_local_nodes))
+        dN_dxi_values = np.zeros((ngaus, ngaus, n_local_nodes, 2))  # Derivatives of shape functions wrt xi and eta
+        for i in range(ngaus):
+            for j in range(ngaus):
+                xi = zgp[i]
+                eta = zgp[j]
+                N_gp = N_numba(xi, eta)
+                dN_dxi_gp = dN_dxi_numba(xi, eta)
+                N_values[i, j, :] = N_gp
+                dN_dxi_values[i, j, :, :] = dN_dxi_gp
+
+        # Numba-compiled function for assembly
+        @njit(parallel=True)
+        def assemble_diffusion_matrix(I_data, J_data, V_data, X, Y, T, n_elements, n_local_nodes, N_values, dN_dxi_values, zgp, wgp, n_nodes):
+            for elem in prange(n_elements):
+                element_nodes = T[elem, :]
+                x_element = X[element_nodes]
+                y_element = Y[element_nodes]
+                K_element = np.zeros((n_local_nodes, n_local_nodes))
+                for i in range(ngaus):
+                    for j in range(ngaus):
+                        xi = zgp[i]
+                        eta = zgp[j]
+                        N_gp = N_values[i, j, :]
+                        dN_dxi_gp = dN_dxi_values[i, j, :, :]  # Shape (n_local_nodes, 2)
+                        J = np.zeros((2, 2))
+                        for a in range(n_local_nodes):
+                            J[0, 0] += dN_dxi_gp[a, 0] * x_element[a]
+                            J[0, 1] += dN_dxi_gp[a, 0] * y_element[a]
+                            J[1, 0] += dN_dxi_gp[a, 1] * x_element[a]
+                            J[1, 1] += dN_dxi_gp[a, 1] * y_element[a]
+                        detJ = J[0, 0] * J[1, 1] - J[0, 1] * J[1, 0]
+                        invJ = np.linalg.inv(J)
+                        dN_dx_gp = np.dot(invJ, dN_dxi_gp.T)
+
+                        dV = wgp[i] * wgp[j] * detJ
+                        K_element += dV * (dN_dx_gp.T @ dN_dx_gp)
+
+                # Assemble K_element into global matrix entries
+                idx_elem = elem * n_local_nodes * n_local_nodes * 2
+                idx = idx_elem
+                for a in range(n_local_nodes):
+                    global_a_x = element_nodes[a]
+                    global_a_y = element_nodes[a] + n_nodes
+                    for b in range(n_local_nodes):
+                        global_b_x = element_nodes[b]
+                        global_b_y = element_nodes[b] + n_nodes
+                        value = K_element[a, b]
+                        # For u_x component
+                        I_data[idx] = global_a_x
+                        J_data[idx] = global_b_x
+                        V_data[idx] = value
+                        idx += 1
+                        # For u_y component
+                        I_data[idx] = global_a_y
+                        J_data[idx] = global_b_y
+                        V_data[idx] = value
+                        idx += 1
+
+        # Call the Numba-compiled assembly function
+        assemble_diffusion_matrix(
+            I_data, J_data, V_data, X, Y, T, n_elements,
+            n_local_nodes, N_values, dN_dxi_values, zgp, wgp, n_nodes
+        )
+
+        # Create the sparse global diffusion matrix
+        K_global = sp.coo_matrix((V_data, (I_data, J_data)), shape=(2 * n_nodes, 2 * n_nodes)).tocsc()
+        return K_global
+
 
     def compute_convection_matrix(self, U_n):
         n_nodes = len(self.X)
@@ -258,7 +488,7 @@ class FEMBurgers2D:
 
         return C_global.tocsc()
     
-    def compute_convection_matrix_SUPG(self, U_n):
+    def compute_convection_matrix_SUPG_(self, U_n):
         n_nodes = len(self.X)
         n_elements, n_local_nodes = self.T.shape
 
@@ -344,9 +574,141 @@ class FEMBurgers2D:
                 print(f"Convection Assembled element {elem + 1}/{n_elements}")
 
         return C_global.tocsc()
+    
+    def compute_convection_matrix_SUPG(self, U_n):
+        n_nodes = len(self.X)
+        n_elements = self.T.shape[0]
+        n_local_nodes = self.n_local_nodes
+
+        total_entries = 2 * n_elements * n_local_nodes * n_local_nodes  # For u_x and u_y components
+        I_data = np.zeros(total_entries, dtype=np.int32)
+        J_data = np.zeros(total_entries, dtype=np.int32)
+        V_data = np.zeros(total_entries)
+
+        X = self.X
+        Y = self.Y
+        T = self.T - 1  # Adjusted for 0-based indexing
+        ngaus = self.ngaus
+        zgp = self.zgp
+        wgp = self.wgp
+
+        # Precompute shape functions at Gauss points
+        N_values = np.zeros((ngaus, ngaus, n_local_nodes))
+        dN_values = np.zeros((ngaus, ngaus, n_local_nodes, 2))
+        for i in range(ngaus):
+            for j in range(ngaus):
+                xi = zgp[i]
+                eta = zgp[j]
+                N_gp = N_numba(xi, eta)
+                dN_dxi_gp = dN_dxi_numba(xi, eta)
+                N_values[i, j, :] = N_gp
+                dN_values[i, j, :, :] = dN_dxi_gp
+
+        # Numba-compiled function for assembly
+        @njit(parallel=True)
+        def assemble_convection_SUPG(I_data, J_data, V_data, X, Y, U_n, T, n_elements, n_local_nodes, N_values, dN_values, zgp, wgp, n_nodes):
+            for elem in prange(n_elements):
+                element_nodes = T[elem, :]
+                x_element = X[element_nodes]
+                y_element = Y[element_nodes]
+                u_element = U_n[element_nodes, 0]  # u_x at nodes
+                v_element = U_n[element_nodes, 1]  # u_y at nodes
+
+                # Initialize local convection matrix and SUPG terms
+                C_element = np.zeros((2 * n_local_nodes, 2 * n_local_nodes))
+                C_SUPG_element = np.zeros((2 * n_local_nodes, 2 * n_local_nodes))
+
+                for i in range(ngaus):
+                    for j in range(ngaus):
+                        N_gp = N_values[i, j, :]
+                        dN_dxi_gp = dN_values[i, j, :, :]
+
+                        # Compute Jacobian and its inverse
+                        J = np.zeros((2, 2))
+                        for a in range(n_local_nodes):
+                            J[0, 0] += dN_dxi_gp[a, 0] * x_element[a]
+                            J[0, 1] += dN_dxi_gp[a, 0] * y_element[a]
+                            J[1, 0] += dN_dxi_gp[a, 1] * x_element[a]
+                            J[1, 1] += dN_dxi_gp[a, 1] * y_element[a]
+
+                        detJ = J[0, 0] * J[1, 1] - J[0, 1] * J[1, 0]
+                        invJ = np.linalg.inv(J)
+                        dN_dx_gp = invJ @ dN_dxi_gp.T  # Derivatives w.r.t x, y
+
+                        # Compute velocities at Gauss point
+                        u_x_gp = np.dot(N_gp, u_element)
+                        u_y_gp = np.dot(N_gp, v_element)
+                        u_gp = np.array([u_x_gp, u_y_gp])
+
+                        # Compute average velocity magnitude and element length
+                        u_mag = np.linalg.norm(u_gp)
+                        h_e = np.sqrt(2 * detJ)  # Approximate element size
+
+                        # Compute stabilization parameter tau_e
+                        tau_e = h_e / (2 * u_mag + 1e-10)  # Small number added to avoid division by zero
+
+                        # Compute differential volume
+                        dV = wgp[i] * wgp[j] * detJ
+
+                        # Compute local convection matrix entries
+                        for a in range(n_local_nodes):
+                            for b in range(n_local_nodes):
+                                # Indices in local convection matrix
+                                ia_u = a
+                                ia_v = a + n_local_nodes
+                                ib_u = b
+                                ib_v = b + n_local_nodes
+
+                                # Standard Galerkin terms
+                                # For u_x equation
+                                C_element[ia_u, ib_u] += N_gp[a] * (u_x_gp * dN_dx_gp[0, b] + u_y_gp * dN_dx_gp[1, b]) * dV
+                                # For u_y equation
+                                C_element[ia_v, ib_v] += N_gp[a] * (u_x_gp * dN_dx_gp[0, b] + u_y_gp * dN_dx_gp[1, b]) * dV
+
+                                # SUPG stabilization terms
+                                # Compute the streamline derivative of the test function
+                                grad_N_a = dN_dx_gp[:, a]
+                                streamline_derivative = np.dot(u_gp, grad_N_a)
+
+                                # For u_x equation
+                                C_SUPG_element[ia_u, ib_u] += tau_e * streamline_derivative * np.dot(u_gp, dN_dx_gp[:, b]) * dV
+                                # For u_y equation
+                                C_SUPG_element[ia_v, ib_v] += tau_e * streamline_derivative * np.dot(u_gp, dN_dx_gp[:, b]) * dV
+
+                # Assemble into global convection matrix
+                idx_elem = elem * n_local_nodes * n_local_nodes * 2
+                idx = idx_elem
+                for a in range(n_local_nodes):
+                    global_a_x = element_nodes[a]
+                    global_a_y = element_nodes[a] + n_nodes
+                    for b in range(n_local_nodes):
+                        global_b_x = element_nodes[b]
+                        global_b_y = element_nodes[b] + n_nodes
+                        value = C_element[a, b] + C_SUPG_element[a, b]
+                        # For u_x component
+                        I_data[idx] = global_a_x
+                        J_data[idx] = global_b_x
+                        V_data[idx] = value
+                        idx += 1
+                        # For u_y component
+                        I_data[idx] = global_a_y
+                        J_data[idx] = global_b_y
+                        V_data[idx] = value
+                        idx += 1
+
+        # Call the Numba-compiled assembly function
+        assemble_convection_SUPG(
+            I_data, J_data, V_data, X, Y, U_n, T, n_elements,
+            n_local_nodes, N_values, dN_values, zgp, wgp, n_nodes
+        )
+
+        # Create the sparse global convection matrix
+        C_global = sp.coo_matrix((V_data, (I_data, J_data)), shape=(2 * n_nodes, 2 * n_nodes)).tocsc()
+        return C_global
 
 
-    def compute_forcing_vector(self, mu2):
+
+    def compute_forcing_vector_(self, mu2):
         n_nodes = len(self.X)  # Total number of nodes
         n_elements, n_local_nodes = self.T.shape  # Number of elements and local nodes per element
         F_global = np.zeros(2 * n_nodes)  # Initialize global forcing vector
@@ -399,6 +761,75 @@ class FEMBurgers2D:
 
         return F_global  # Return the global forcing vector of size (2 * n_nodes)
     
+    def compute_forcing_vector(self, mu2):
+        n_nodes = len(self.X)
+        n_elements = self.T.shape[0]
+        n_local_nodes = self.n_local_nodes
+
+        F_global = np.zeros(2 * n_nodes)  # Global forcing vector for u_x and u_y
+
+        X = self.X
+        Y = self.Y
+        T = self.T - 1  # Adjusted for 0-based indexing
+        ngaus = self.ngaus
+        zgp = self.zgp
+        wgp = self.wgp
+
+        # Precompute shape functions at Gauss points
+        N_values = np.zeros((ngaus, ngaus, n_local_nodes))
+        for i in range(ngaus):
+            for j in range(ngaus):
+                xi = zgp[i]
+                eta = zgp[j]
+                N_gp = N_numba(xi, eta)
+                N_values[i, j, :] = N_gp
+
+        # Numba-compiled function for assembly
+        @njit(parallel=True)
+        def assemble_forcing_vector(F_global, X, Y, T, n_elements, n_local_nodes, N_values, zgp, wgp, mu2, n_nodes):
+            for elem in prange(n_elements):
+                element_nodes = T[elem, :]
+                x_element = X[element_nodes]
+                y_element = Y[element_nodes]
+                F_element = np.zeros((n_local_nodes, 2))  # Local forcing vector for u_x and u_y
+
+                for i in range(ngaus):
+                    for j in range(ngaus):
+                        N_gp = N_values[i, j, :]
+                        dN_dxi_gp = dN_dxi_numba(zgp[i], zgp[j])
+
+                        # Compute Jacobian and its determinant
+                        J = np.zeros((2, 2))
+                        for a in range(n_local_nodes):
+                            J[0, 0] += dN_dxi_gp[a, 0] * x_element[a]
+                            J[0, 1] += dN_dxi_gp[a, 0] * y_element[a]
+                            J[1, 0] += dN_dxi_gp[a, 1] * x_element[a]
+                            J[1, 1] += dN_dxi_gp[a, 1] * y_element[a]
+
+                        detJ = J[0, 0] * J[1, 1] - J[0, 1] * J[1, 0]
+                        dV = wgp[i] * wgp[j] * detJ
+
+                        # Compute the physical coordinates at the Gauss point
+                        x_gp = np.dot(N_gp, x_element)
+
+                        # Compute the forcing function at the Gauss point
+                        f_x_gp = 0.02 * np.exp(mu2 * x_gp)  # Forcing term for u_x component
+
+                        # Update local forcing vector
+                        F_element[:, 0] += f_x_gp * N_gp * dV  # Forcing in u_x direction (non-zero)
+                        F_element[:, 1] += 0.0 * N_gp * dV     # Forcing in u_y direction (zero)
+
+                # Assemble local forcing into global vector
+                for a in range(n_local_nodes):
+                    F_global[element_nodes[a]] += F_element[a, 0]            # For u_x component
+                    F_global[element_nodes[a] + n_nodes] += F_element[a, 1]  # For u_y component
+
+        # Call the Numba-compiled assembly function
+        assemble_forcing_vector(F_global, X, Y, T, n_elements, n_local_nodes, N_values, zgp, wgp, mu2, n_nodes)
+
+        return F_global  # Return the global forcing vector
+
+    
     def compute_residual(self, U_new_flat, U_n_flat, At, M, E, K, F):
         n_nodes = len(self.X)
         # Reshape U_new_flat to get U_new
@@ -407,7 +838,10 @@ class FEMBurgers2D:
         U_new[:, 1] = U_new_flat[n_nodes:]       # u_y components
 
         # Compute convection matrix at current U_new
+        start = time.time()
         C = self.compute_convection_matrix_SUPG(U_new)
+        end = time.time()
+        print(f"Time for new mass matrix assembling: {end-start}")
 
         # Assemble global system matrix A
         A = M + At * (C + E * K)
@@ -429,8 +863,15 @@ class FEMBurgers2D:
         U[:, 0, :] = u0  # Set initial condition
 
         # Compute the mass and diffusion matrices (these are constant)
+        start = time.time()
         M = self.compute_mass_matrix()
+        end = time.time()
+        print(f"Time for new mass matrix assembling: {end-start}")
+
+        start = time.time()
         K = self.compute_diffusion_matrix()
+        end = time.time()
+        print(f"Time for new diff matrix assembling: {end-start}")
 
         # Identify the nodes at the left boundary (x = 0)
         tolerance = 1e-8
@@ -438,7 +879,10 @@ class FEMBurgers2D:
         boundary_dofs_u_x = left_boundary_nodes  # DOFs for u_x at x = 0
 
         # Precompute the forcing vector (if it's constant)
+        start = time.time()
         F = self.compute_forcing_vector(mu2)  # Returns a flat vector of size 2n_nodes
+        end = time.time()
+        print(f"Time for new forcing vector assembling: {end-start}")
 
         # Time-stepping loop
         for n in range(nTimeSteps):
