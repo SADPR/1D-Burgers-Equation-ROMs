@@ -3,6 +3,7 @@ import scipy.sparse as sp
 import scipy.sparse.linalg as spla
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
+import time
 
 import matplotlib.pyplot as plt
 
@@ -186,7 +187,7 @@ class FEMBurgers2D:
         return K_global.tocsc()  # Convert to sparse format for efficiency
 
 
-    def compute_convection_matrix(self, U_n):
+    def compute_convection_matrix_(self, U_n):
         n_nodes = len(self.X)  # Total number of nodes
         n_elements, n_local_nodes = self.T.shape  # Number of elements and local nodes per element
 
@@ -254,6 +255,69 @@ class FEMBurgers2D:
 
         # Convert to sparse format for efficiency
         return C_global_x.tocsc(), C_global_y.tocsc()
+    
+    def compute_convection_matrix(self, U_n):
+        n_nodes = len(self.X)
+        n_elements, n_local_nodes = self.T.shape
+
+        # Initialize global convection matrix
+        C_global = sp.lil_matrix((2 * n_nodes, 2 * n_nodes))
+
+        for elem in range(n_elements):
+            element_nodes = self.T[elem, :] - 1  # Adjusted for 0-based indexing
+            x_element = self.X[element_nodes]
+            y_element = self.Y[element_nodes]
+            u_element = U_n[element_nodes, 0]  # u_x at nodes
+            v_element = U_n[element_nodes, 1]  # u_y at nodes
+
+            # Initialize local convection matrix
+            C_element = np.zeros((2 * n_local_nodes, 2 * n_local_nodes))
+
+            for i in range(self.ngaus):
+                for j in range(self.ngaus):
+                    xi = self.zgp[i]
+                    eta = self.zgp[j]
+                    N_gp = self.N(xi, eta)  # Shape functions at Gauss point
+                    dN_dxi_gp = self.dN_dxi(xi, eta)  # Derivatives w.r.t xi, eta
+
+                    # Compute Jacobian and its inverse
+                    J = dN_dxi_gp.T @ np.vstack((x_element, y_element)).T
+                    detJ = np.linalg.det(J)
+                    invJ = np.linalg.inv(J)
+                    dN_dx_gp = invJ @ dN_dxi_gp.T  # Derivatives w.r.t x, y
+
+                    # Compute velocities at Gauss point
+                    u_x_gp = N_gp @ u_element
+                    u_y_gp = N_gp @ v_element
+
+                    # Compute differential volume
+                    dV = self.wgp[i] * self.wgp[j] * detJ
+
+                    # Compute local convection matrix entries
+                    for a in range(n_local_nodes):
+                        for b in range(n_local_nodes):
+                            # Indices in local convection matrix
+                            ia_u = a
+                            ia_v = a + n_local_nodes
+                            ib_u = b
+                            ib_v = b + n_local_nodes
+
+                            # For u_x equation
+                            C_element[ia_u, ib_u] -= dN_dx_gp[0, a] * (u_x_gp ** 2 / 2) * N_gp[b] * dV
+                            C_element[ia_u, ib_u] -= dN_dx_gp[1, a] * u_x_gp * u_y_gp * N_gp[b] * dV
+
+                            # For u_y equation
+                            C_element[ia_v, ib_u] -= dN_dx_gp[0, a] * u_x_gp * u_y_gp * N_gp[b] * dV
+                            C_element[ia_v, ib_v] -= dN_dx_gp[1, a] * (u_y_gp ** 2 / 2) * N_gp[b] * dV
+
+            # Assemble into global convection matrix
+            global_indices = np.concatenate([element_nodes, element_nodes + n_nodes])
+            for local_row, global_row in enumerate(global_indices):
+                for local_col, global_col in enumerate(global_indices):
+                    C_global[global_row, global_col] += C_element[local_row, local_col]
+
+        return C_global.tocsc()
+
 
 
     def compute_forcing_vector(self, mu2):
@@ -345,27 +409,35 @@ class FEMBurgers2D:
                 A_x = M + At * (C_x + E * K)
                 # Form the system matrix A and right-hand side b for the u_y component
                 A_y = M + At * (C_y + E * K)
-
+                
                 # Apply Dirichlet boundary condition at x = 0 for u_x component
+                A_x = A_x.tolil()
                 for node in left_boundary_nodes:
                     A_x[node, :] = 0
                     A_x[node, node] = 1
+                # Convert back to csc_matrix for efficient solving
+                A_x = A_x.tocsc()
 
                 # Right-hand side vector for u_x component
                 b_x = M @ U[:, n, 0] + At * F[:, 0]
                 b_x[left_boundary_nodes] = mu1  # Apply Dirichlet condition for u_x
 
                 # Solve the linear system for u_x component
+                start = time.time()
                 Ux_new = spla.spsolve(A_x, b_x)
+                end = time.time()
+                print(f"First option time: {end-start}")
 
                 # Apply Dirichlet boundary condition for u_y component
+                # A_y = A_y.tolil()
                 # for node in left_boundary_nodes:
                 #     A_y[node, :] = 0
                 #     A_y[node, node] = 1
+                # A_y = A_y.tocsc()
 
                 # Right-hand side vector for u_y component
                 b_y = M @ U[:, n, 1] + At * F[:, 1]
-                b_y[left_boundary_nodes] = mu1  # Apply Dirichlet condition for u_y
+                # b_y[left_boundary_nodes] = 0.0  # Apply Dirichlet condition for u_y
 
                 # Solve the linear system for u_y component
                 Uy_new = spla.spsolve(A_y, b_y)
@@ -406,7 +478,7 @@ if __name__ == "__main__":
     u0 = np.ones((len(X), 2))  # Initialize for both u_x and u_y
 
     # Time discretization
-    Tf, At = 35, 0.07
+    Tf, At = 35, 0.05
     nTimeSteps = int(Tf / At)
     E = 0.01
 
