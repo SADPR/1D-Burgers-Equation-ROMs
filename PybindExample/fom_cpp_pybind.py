@@ -233,7 +233,7 @@ if __name__ == "__main__":
     # Time discretization
     Tf, At = 25.0, 0.05  # Adjusted for quicker testing
     nTimeSteps = int(Tf / At)
-    E = 1.0
+    E = 0.2
 
     # Parameters
     mu1, mu2 = 4.77, 0.02
