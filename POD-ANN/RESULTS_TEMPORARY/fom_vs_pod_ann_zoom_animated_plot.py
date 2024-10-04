@@ -5,6 +5,10 @@ from mpl_toolkits.axes_grid1.inset_locator import TransformedBbox, BboxPatch, Bb
 from mpl_toolkits.axes_grid1.inset_locator import zoomed_inset_axes
 from matplotlib.animation import FuncAnimation, PillowWriter
 
+# Enable LaTeX text rendering (optional)
+plt.rc('text', usetex=True)
+plt.rc('font', family='serif')
+
 def custom_mark_inset(parent_axes, inset_axes, loc1a=1, loc1b=1, loc2a=2, loc2b=2, **kwargs):
     rect = TransformedBbox(inset_axes.viewLim, parent_axes.transData)
 
@@ -22,7 +26,10 @@ def custom_mark_inset(parent_axes, inset_axes, loc1a=1, loc1b=1, loc2a=2, loc2b=
     return pp, p1, p2
 
 def animate_zoom(X, original_snapshot_fom, pod_ann_reconstructed, nTimeSteps, At, zoom_window_size):
-    fig, ax = plt.subplots(figsize=(10, 6))
+    fig, ax = plt.subplots(figsize=(7, 6))  # Consistent figure size
+
+    # Set the grid and axis limits
+    ax.grid(True)
     ax.set_xlim(min(X), max(X))
     ax.set_ylim(0, 10)
 
@@ -30,17 +37,18 @@ def animate_zoom(X, original_snapshot_fom, pod_ann_reconstructed, nTimeSteps, At
     original_snapshot_fom = original_snapshot_fom
     pod_ann_reconstructed = pod_ann_reconstructed
 
-    # Initial plot
-    line_original_fom, = ax.plot(X, original_snapshot_fom[:, 0], 'k-', label='FOM Snapshot')
-    line_pod_ann, = ax.plot(X, pod_ann_reconstructed[:, 0], 'r--', label=f'POD-ANN (28 primary modes, 301 secondary modes)')
+    # Initial plot (black for FOM, red for POD-ANN)
+    line_original_fom, = ax.plot(X, original_snapshot_fom[:, 0], 'k-', label='FOM Snapshot')  # Black for FOM
+    line_pod_ann, = ax.plot(X, pod_ann_reconstructed[:, 0], 'r--', label=f'POD-ANN (28 primary modes, 301 secondary modes)')  # Red for POD-ANN
 
+    # Set title, labels, and legend
     ax.set_title('Snapshot Comparison')
-    ax.set_xlabel('x')
-    ax.set_ylabel('u')
-    ax.legend()
+    ax.set_xlabel(r'$x$')
+    ax.set_ylabel(r'$u$')
+    ax.legend(loc='upper right')
 
     # Create the zoom box (inset)
-    axins = ax.inset_axes([0.05, 0.6, 0.35, 0.35])  # [x0, y0, width, height]
+    axins = ax.inset_axes([0.05, 0.6, 0.35, 0.35])  # Position and size of inset
     axins.plot(X, original_snapshot_fom[:, 0], 'k-')
     axins.plot(X, pod_ann_reconstructed[:, 0], 'r--')
 
@@ -55,7 +63,7 @@ def animate_zoom(X, original_snapshot_fom, pod_ann_reconstructed, nTimeSteps, At
         line_original_fom.set_ydata(original_snapshot_fom[:, frame])
         line_pod_ann.set_ydata(pod_ann_reconstructed[:, frame])
 
-        # Detect discontinuity
+        # Detect discontinuity for zoom
         differences = np.abs(np.diff(original_snapshot_fom[:, frame]))
         discontinuity_index = np.argmax(differences)
         zoom_center = X[discontinuity_index]
@@ -74,21 +82,21 @@ def animate_zoom(X, original_snapshot_fom, pod_ann_reconstructed, nTimeSteps, At
         axins.set_xlim(zoom_start, zoom_end)
         axins.set_ylim(y_max - 0.5, y_max + 0.5)
 
+        # Update title with consistent time format
         ax.set_title(f'Snapshot Comparison at t = {frame * At:.2f}')
 
-        # Remove previous inset mark and create new one
+        # Remove previous inset mark and create a new one
         for artist in inset_mark:
             artist.remove()
-
         inset_mark = custom_mark_inset(ax, axins, loc1a=4, loc1b=1, loc2a=3, loc2b=2, fc="none", ec="0.5", linestyle="--")
 
     # Create the animation
-    ani = FuncAnimation(fig, update, frames=nTimeSteps + 1, interval=100)
+    ani = FuncAnimation(fig, update, frames=nTimeSteps + 1, interval=1000 / 30)  # Set FPS to 30
 
-    # Save animation as GIF
-    ani.save("fom_vs_pod_ann_comparison.gif", writer=PillowWriter(fps=10))
+    # Save animation as GIF with PillowWriter at 30 fps
+    ani.save("fom_vs_pod_ann_comparison.gif", writer=PillowWriter(fps=30))
 
-    plt.show()
+    plt.close()
 
 if __name__ == '__main__':
     # Load the reconstructed snapshots from .npy files
@@ -109,7 +117,8 @@ if __name__ == '__main__':
     At = 0.07
     nTimeSteps = int(Tf / At)
 
-    # Create dynamic zoom GIF
+    # Create dynamic zoom GIF with window size of 4
     zoom_window_size = 4  # Width of the zoom window
     animate_zoom(X, original_snapshot_fom, pod_ann_reconstructed, nTimeSteps, At, zoom_window_size)
+
 
