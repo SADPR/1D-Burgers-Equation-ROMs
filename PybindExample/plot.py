@@ -48,7 +48,7 @@ def plot_3d_surface_animation(U, X, Y, filename='surface_animation.gif', max_fra
         return surf,
 
     ani = animation.FuncAnimation(fig, update_surface, frames=nTimeSteps + 1, blit=True)
-    ani.save(filename, writer='pillow', fps=10)
+    ani.save(filename, writer='pillow', fps=30)
     plt.close()
 
 def plot_3d_side_view_animation(U, X, Y, filename='side_view_animation.gif', max_frames=500):
@@ -95,7 +95,7 @@ def plot_3d_side_view_animation(U, X, Y, filename='side_view_animation.gif', max
         return surf,
 
     ani = animation.FuncAnimation(fig, update_side_view, frames=nTimeSteps + 1, blit=True)
-    ani.save(filename, writer='pillow', fps=10)
+    ani.save(filename, writer='pillow', fps=30)
     plt.close()
 
 def plot_2d_cuts_animation(U, X, Y, line='x', fixed_value=50.0, filename='cuts_animation.gif', max_frames=500):
@@ -156,7 +156,7 @@ def plot_2d_cuts_animation(U, X, Y, line='x', fixed_value=50.0, filename='cuts_a
             return ax.lines
 
     ani = animation.FuncAnimation(fig, update_cut, frames=nTimeSteps + 1, blit=True)
-    ani.save(filename, writer='pillow', fps=10)
+    ani.save(filename, writer='pillow', fps=30)
     plt.close()
 
 def plot_2d_heatmap_animation(U, X, Y, filename='heatmap_animation.gif', max_frames=500):
@@ -203,7 +203,7 @@ def plot_2d_heatmap_animation(U, X, Y, filename='heatmap_animation.gif', max_fra
         return heatmap,
 
     ani = animation.FuncAnimation(fig, update_heatmap, frames=nTimeSteps + 1, blit=True)
-    ani.save(filename, writer='pillow', fps=10)
+    ani.save(filename, writer='pillow', fps=30)
     plt.close()
 
 def plot_100th_step(U, X, Y):

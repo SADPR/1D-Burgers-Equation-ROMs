@@ -205,7 +205,7 @@ class FEMBurgers2D:
 if __name__ == "__main__":
     # Domain and mesh
     a, b = 0, 100
-    nx, ny = 250, 250  # Adjusted for quicker testing
+    nx, ny = 750, 750  # Adjusted for quicker testing
     x = np.linspace(a, b, nx + 1)
     y = np.linspace(a, b, ny + 1)
     X_grid, Y_grid = np.meshgrid(x, y)
