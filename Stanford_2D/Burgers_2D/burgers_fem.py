@@ -7,7 +7,9 @@ import diffusion_matrix_parallel
 import convection_matrix_supg_parallel
 import boundary_conditions_parallel
 import sparse_solver_parallel
+import mkl_sparse_dense_operations
 import matplotlib.pyplot as plt
+from scipy.spatial.distance import pdist, squareform
 
 class FEMBurgers2D:
     def __init__(self, X, Y, T):
@@ -199,7 +201,7 @@ class FEMBurgers2D:
         return U_flat
 
 
-    def pod_prom_burgers(self, At, nTimeSteps, u0, mu1, E, mu2, Phi, X, Y, projection="LSPG", plot_interval=1):
+    def pod_prom_burgers_(self, At, nTimeSteps, u0, mu1, E, mu2, Phi, X, Y, projection="LSPG", plot_interval=1):
         n_nodes = len(self.X)
         total_dofs = n_nodes * 2  # Total degrees of freedom (u_x and u_y components for each node)
 
@@ -224,9 +226,6 @@ class FEMBurgers2D:
         tolerance = 1e-8
         left_boundary_nodes = np.where(np.isclose(self.X, 0.0, atol=tolerance))[0]
         boundary_dofs_u_x = left_boundary_nodes  # DOFs for u_x at x = 0
-
-        # Map boundary node indices to flattened DOF indices for u_x component
-        boundary_dof_indices = boundary_dofs_u_x  # Since u_x components are from index 0 to n_nodes - 1
 
         # Precompute the forcing vector (if it's constant)
         start_time = time.time()
@@ -253,35 +252,45 @@ class FEMBurgers2D:
                 R, A = self.compute_residual(U_new_flat, U_n_flat, At, M, E, K, F)
                 print(f"    Residual and system matrix computation time: {time.time() - start_time:.6f} seconds")
 
-                # Note: In the reduced-order model, boundary conditions are handled differently.
-                # We enforce the boundary conditions directly in the full-order solution after updating U_new_flat.
+                # Measure time for boundary conditions application
+                start_time = time.time()
                 U_current_flat = U_new_flat.copy()  # This is U_current in the current Newton iteration
-
-                # Call the C++ function with the current solution and boundary value mu1
                 A, R = boundary_conditions_parallel.apply_boundary_conditions(A, R, U_current_flat, boundary_dofs_u_x, mu1)
+                print(f"    Boundary conditions application time: {time.time() - start_time:.6f} seconds")
 
-
-                # Project the system into the reduced-order basis (POD modes)
+                # Measure time for projecting the system into the reduced-order basis
+                start_time = time.time()
                 if projection == "Galerkin":
                     # Galerkin projection
                     Ar = Phi.T @ A @ Phi
                     br = Phi.T @ R
                 elif projection == "LSPG":
-                    # LSPG projection
-                    J_Phi = A @ Phi
-                    Ar = J_Phi.T @ J_Phi
-                    br = J_Phi.T @ R
+                    # # LSPG projection Python 
+                    # J_Phi = A @ Phi
+                    # Ar = J_Phi.T @ J_Phi
+                    # br = J_Phi.T @ R
+
+                    # C++ implementation
+                    start_time = time.time()
+
+                    # Using the C++ function to compute Ar_cpp and br_cpp
+                    Ar, br = mkl_sparse_dense_operations.compute_Ar_br(A, Phi, R)
                 else:
                     raise ValueError(f"Projection method '{projection}' is not available. Please use 'Galerkin' or 'LSPG'.")
+                print(f"    Projection time: {time.time() - start_time:.6f} seconds")
 
-                # Solve the reduced system for the correction delta_q
+                # Measure time for solving the reduced system
+                start_time = time.time()
                 delta_q = np.linalg.solve(Ar, -br)
+                print(f"    Reduced system solver time: {time.time() - start_time:.6f} seconds")
 
                 # Update the reduced coordinates q
                 q = Phi.T @ U_new_flat + delta_q
 
-                # Compute the updated solution in the full-order space
+                # Measure time for updating the full-order solution
+                start_time = time.time()
                 U_new_flat = Phi @ q
+                print(f"    Update solution time: {time.time() - start_time:.6f} seconds")
 
                 # Enforce boundary conditions explicitly in the solution vector
                 # U_new_flat[boundary_dof_indices] = mu1  # Enforce u_x = mu1 at x = 0
@@ -298,12 +307,346 @@ class FEMBurgers2D:
             U_PROM_flat[n + 1, :] = U_new_flat
 
             # Optional: Plot the solution at every 'plot_interval' time step
-            if (n % plot_interval == 0):
-                self.plot_solution(U_new_flat, X, Y, n+1, k)
+            # if (n % plot_interval == 0):
+            #     self.plot_solution(U_new_flat, X, Y, n+1, k)
+
+        # Return the flattened solution matrix
+        return U_PROM_flat
+    
+    def pod_prom_burgers(self, At, nTimeSteps, u0, mu1, E, mu2, Phi, X, Y, projection="LSPG", plot_interval=10):
+        n_nodes = len(self.X)
+        total_dofs = n_nodes * 2  # Total degrees of freedom (u_x and u_y components for each node)
+
+        # Flatten the initial condition
+        u0_flat = np.concatenate([u0[:, 0], u0[:, 1]])  # Shape: (total_dofs,)
+
+        # Allocate memory for the flattened solution matrix
+        U_PROM_flat = np.zeros((nTimeSteps + 1, total_dofs))
+        U_PROM_flat[0, :] = u0_flat  # Set initial condition
+
+        # Measure time for mass matrix assembly
+        start_time = time.time()
+        M = self.compute_mass_matrix()
+        print(f"Mass matrix assembly time: {time.time() - start_time:.6f} seconds")
+
+        # Measure time for diffusion matrix assembly
+        start_time = time.time()
+        K = self.compute_diffusion_matrix()
+        print(f"Diffusion matrix assembly time: {time.time() - start_time:.6f} seconds")
+
+        # Identify the nodes at the left boundary (x = 0)
+        tolerance = 1e-8
+        left_boundary_nodes = np.where(np.isclose(self.X, 0.0, atol=tolerance))[0]
+        boundary_dofs_u_x = left_boundary_nodes  # DOFs for u_x at x = 0
+
+        # Precompute the forcing vector (if it's constant)
+        start_time = time.time()
+        F = self.compute_forcing_vector(mu2)
+        print(f"Forcing vector assembly time: {time.time() - start_time:.6f} seconds")
+
+        # Time-stepping loop
+        for n in range(nTimeSteps):
+            print(f"Time Step: {n+1}/{nTimeSteps}. Time: {(n+1) * At}")
+
+            U_n_flat = U_PROM_flat[n, :]  # Current solution at time step n
+            U_new_flat = U_n_flat.copy()  # Initial guess for U_new_flat
+
+            error_U = 1
+            k = 0
+            max_iter = 15  # Maximum iterations for the nonlinear solver
+            tol = 1e-8
+
+            while (error_U > tol) and (k < max_iter):  # Nonlinear solver loop
+                print(f"  Iteration: {k}, Error: {error_U:.2e}")
+
+                # Measure time for residual and system matrix computation
+                start_time = time.time()
+                R, A = self.compute_residual(U_new_flat, U_n_flat, At, M, E, K, F)
+                print(f"    Residual and system matrix computation time: {time.time() - start_time:.6f} seconds")
+
+                # Measure time for boundary conditions application
+                start_time = time.time()
+                U_current_flat = U_new_flat.copy()  # This is U_current in the current Newton iteration
+                A, R = boundary_conditions_parallel.apply_boundary_conditions(A, R, U_current_flat, boundary_dofs_u_x, mu1)
+                print(f"    Boundary conditions application time: {time.time() - start_time:.6f} seconds")
+
+                # Measure time for projecting the system into the reduced-order basis
+                start_time = time.time()
+                if projection == "Galerkin":
+                    # Galerkin projection
+                    Ar = Phi.T @ A @ Phi
+                    br = Phi.T @ R
+                elif projection == "LSPG":
+                    # # LSPG projection Python 
+                    # J_Phi = A @ Phi
+                    # Ar = J_Phi.T @ J_Phi
+                    # br = J_Phi.T @ R
+
+                    # C++ implementation
+                    start_time = time.time()
+
+                    # Using the C++ function to compute Ar_cpp and br_cpp
+                    Ar, br = mkl_sparse_dense_operations.compute_Ar_br(A, Phi, R)
+                else:
+                    raise ValueError(f"Projection method '{projection}' is not available. Please use 'Galerkin' or 'LSPG'.")
+                print(f"    Projection time: {time.time() - start_time:.6f} seconds")
+
+                # Measure time for solving the reduced system
+                start_time = time.time()
+                delta_q = np.linalg.solve(Ar, -br)
+                print(f"    Reduced system solver time: {time.time() - start_time:.6f} seconds")
+
+                # Update the reduced coordinates q
+                q = Phi.T @ U_new_flat + delta_q
+
+                ####FOM####
+                # # Measure time for solving the system
+                # start_time = time.time()
+                # # Solve the linear system using your preferred solver
+                # delta_U = sparse_solver_parallel.solve_sparse_system(A, R)
+                # print(f"    Solver time: {time.time() - start_time:.6f} seconds")
+
+                # # Update the solution
+                # U_new_flat_fom = U_new_flat + delta_U  # U_new_flat = U_new_flat + delta_U
+                # U_new_flat_fom_approx = Phi@(Phi.T @ U_new_flat_fom)
+
+                ####FOM####
+
+                # Measure time for updating the full-order solution
+                start_time = time.time()
+                U_new_flat = Phi @ q
+                print(f"    Update solution time: {time.time() - start_time:.6f} seconds")
+
+                # Enforce boundary conditions explicitly in the solution vector
+                # U_new_flat[boundary_dof_indices] = mu1  # Enforce u_x = mu1 at x = 0
+
+                # Compute the error
+                error_U = np.linalg.norm(delta_q) / (np.linalg.norm(q) + 1e-12)
+                # error_U = np.linalg.norm(delta_U) / (np.linalg.norm(U_new_flat) + 1e-12)
+
+                k += 1
+
+            if k == max_iter:
+                print("  Warning: Nonlinear solver did not converge within maximum iterations")
+
+            # Store the converged solution for this time step
+            U_PROM_flat[n + 1, :] = U_new_flat
+
+            # Optional: Plot the solution at every 'plot_interval' time step
+            # if (n % plot_interval == 0):
+            #     self.plot_solution(U_new_flat, X, Y, n+1, k)
+            #     self.plot_solution(U_new_flat_fom_approx, X, Y, n+1, k)
 
         # Return the flattened solution matrix
         return U_PROM_flat
 
+    def gaussian_rbf(self, r, epsilon):
+        """Gaussian RBF kernel function."""
+        return np.exp(-(epsilon * r) ** 2)
+    
+    def pod_rbf_prom_nearest_neighbours_dynamic_2d(self, At, nTimeSteps, u0, mu1, E, mu2, U_p, U_s, q_p_train, q_s_train, kdtree, epsilon, neighbors=100, projection="LSPG"):
+        """
+        POD-RBF based PROM for 2D case using nearest neighbors dynamically.
+
+        Parameters:
+        - At: Time step size.
+        - nTimeSteps: Number of time steps.
+        - u0: Initial condition vector (shape: (n_nodes, 2) for u_x and u_y).
+        - mu1: Boundary condition value for u_x.
+        - E: Diffusion coefficient.
+        - mu2: Parameter mu2 for the forcing term.
+        - U_p: Primary POD basis (shape: (2*n_nodes, r)).
+        - U_s: Secondary POD basis (shape: (2*n_nodes, s)).
+        - q_p_train: Training data for principal modes (shape: (num_train_samples, r)).
+        - q_s_train: Training data for secondary modes (shape: (num_train_samples, s)).
+        - kdtree: Precomputed KDTree for finding nearest neighbors.
+        - epsilon: The width parameter for the RBF kernel.
+        - neighbors: Number of nearest neighbors to use for interpolation.
+        - projection: Type of projection ("Galerkin" or "LSPG").
+
+        Returns:
+        - U_PROM_flat: Solution matrix over time (shape: (nTimeSteps+1, 2*n_nodes)).
+        """
+        n_nodes = len(self.X)
+        total_dofs = n_nodes * 2  # Total degrees of freedom (u_x and u_y components for each node)
+
+        # Flatten the initial condition
+        u0_flat = np.concatenate([u0[:, 0], u0[:, 1]])  # Shape: (total_dofs,)
+
+        # Allocate memory for the solution matrix
+        U_PROM_flat = np.zeros((nTimeSteps + 1, total_dofs))
+        U_PROM_flat[0, :] = u0_flat  # Set initial condition
+
+        # Measure time for mass matrix assembly
+        start_time = time.time()
+        M = self.compute_mass_matrix()
+        print(f"Mass matrix assembly time: {time.time() - start_time:.6f} seconds")
+
+        # Measure time for diffusion matrix assembly
+        start_time = time.time()
+        K = self.compute_diffusion_matrix()
+        print(f"Diffusion matrix assembly time: {time.time() - start_time:.6f} seconds")
+
+        # Identify the nodes at the left boundary (x = 0)
+        tolerance = 1e-8
+        left_boundary_nodes = np.where(np.isclose(self.X, 0.0, atol=tolerance))[0]
+        boundary_dofs_u_x = left_boundary_nodes  # DOFs for u_x at x = 0
+
+        # Precompute the forcing vector (if it's constant)
+        start_time = time.time()
+        F = self.compute_forcing_vector(mu2)
+        print(f"Forcing vector assembly time: {time.time() - start_time:.6f} seconds")
+
+        # Time-stepping loop
+        for n in range(nTimeSteps):
+            print(f"Time Step: {n+1}/{nTimeSteps}. Time: {(n+1) * At}")
+
+            U_n_flat = U_PROM_flat[n, :]  # Current solution at time step n
+            U_new_flat = U_n_flat.copy()  # Initial guess for U_new_flat
+
+            # Project the current state onto the primary POD basis
+            q_p = U_p.T @ U_n_flat
+
+            error_U = 1
+            k = 0
+            max_iter = 15  # Maximum iterations for the nonlinear solver
+            tol = 1e-8
+
+            while (error_U > tol) and (k < max_iter):  # Nonlinear solver loop
+                print(f"  Iteration: {k}, Error: {error_U:.2e}")
+
+                # Compute residual and system matrix
+                R, A = self.compute_residual(U_new_flat, U_n_flat, At, M, E, K, F)
+
+                U_current_flat = U_new_flat.copy()  # This is U_current in the current Newton iteration
+                A, R = boundary_conditions_parallel.apply_boundary_conditions(A, R, U_current_flat, boundary_dofs_u_x, mu1)
+
+                # Project the residual and system matrix into the reduced basis using RBF
+                rbf_jacobian = self.compute_rbf_jacobian_nearest_neighbours_dynamic(kdtree, q_p_train, q_s_train, q_p, epsilon, neighbors)
+                dD_u_dq = U_p + U_s @ rbf_jacobian
+
+                if projection == "Galerkin":
+                    # Galerkin projection
+                    Ar = dD_u_dq.T @ A @ dD_u_dq
+                    br = dD_u_dq.T @ R
+                elif projection == "LSPG":
+                    # LSPG projection
+                    J_dD_u_dq = A @ dD_u_dq
+                    Ar = J_dD_u_dq.T @ J_dD_u_dq
+                    br = J_dD_u_dq.T @ R
+
+                # Solve the reduced system
+                delta_q_p = np.linalg.solve(Ar, -br)
+
+                # Update the reduced coordinates q_p
+                q_p += delta_q_p
+
+                # Interpolate q_s using nearest neighbors dynamically
+                q_s = self.interpolate_with_rbf_nearest_neighbours_dynamic(kdtree, q_p_train, q_s_train, q_p, epsilon, neighbors)
+
+                # Reconstruct the solution using the POD-RBF model
+                U1 = U_p @ q_p + U_s @ q_s
+
+                # Compute the error and update the solution
+                error_U = np.linalg.norm(U1 - U_new_flat) / (np.linalg.norm(U1) + 1e-12)
+                U_new_flat = U1
+                k += 1
+
+            if k == max_iter:
+                print("  Warning: Nonlinear solver did not converge within maximum iterations")
+
+            # Store the converged solution for this time step
+            U_PROM_flat[n + 1, :] = U_new_flat
+
+        return U_PROM_flat
+
+
+    def compute_rbf_jacobian_nearest_neighbours_dynamic(self, kdtree, q_p_train, q_s_train, q_p_sample, epsilon, neighbors):
+        """
+        Compute the Jacobian of the RBF interpolation with respect to q_p using nearest neighbors dynamically.
+
+        Parameters:
+        - kdtree: KDTree to find nearest neighbors.
+        - q_p_train: Training data for principal modes.
+        - q_s_train: Training data for secondary modes.
+        - q_p_sample: The input sample point (reduced coordinates, q_p).
+        - epsilon: The width parameter for the RBF kernel.
+        - neighbors: Number of nearest neighbors to use.
+
+        Returns:
+        - jacobian: The Jacobian matrix of the RBF's output with respect to q_p.
+        """
+        # Find the nearest neighbors in q_p_train
+        dist, idx = kdtree.query(q_p_sample.reshape(1, -1), k=neighbors)
+
+        # Extract the neighbor points and corresponding secondary modes
+        q_p_neighbors = q_p_train[idx].reshape(neighbors, -1)
+        q_s_neighbors = q_s_train[idx].reshape(neighbors, -1)
+
+        # Compute pairwise distances between neighbors using pdist
+        dists_neighbors = squareform(pdist(q_p_neighbors))
+
+        # Compute the RBF matrix for the neighbors
+        Phi_neighbors = self.gaussian_rbf(dists_neighbors, epsilon)
+
+        # Regularization for numerical stability
+        Phi_neighbors += np.eye(neighbors) * 1e-8
+
+        # Solve for the RBF weights (W_neighbors)
+        W_neighbors = np.linalg.solve(Phi_neighbors, q_s_neighbors)
+
+        # Compute RBF kernel values between q_p_sample and its neighbors
+        rbf_values = self.gaussian_rbf(dist.flatten(), epsilon)
+
+        # Compute the Jacobian by multiplying weights and RBF kernel derivatives
+        jacobian = np.zeros((q_s_neighbors.shape[1], q_p_neighbors.shape[1]))
+        for i in range(neighbors):
+            dphi_dq_p = -2 * epsilon**2 * (q_p_sample - q_p_neighbors[i]) * rbf_values[i]
+            jacobian += np.outer(W_neighbors[i], dphi_dq_p)
+
+        return jacobian
+
+    def interpolate_with_rbf_nearest_neighbours_dynamic(self, kdtree, q_p_train, q_s_train, q_p_sample, epsilon, neighbors):
+        """
+        Interpolate the secondary modes q_s using nearest neighbors and RBF interpolation dynamically.
+
+        Parameters:
+        - kdtree: KDTree to find nearest neighbors.
+        - q_p_train: Training data for principal modes.
+        - q_s_train: Training data for secondary modes.
+        - q_p_sample: The input sample point (reduced coordinates, q_p).
+        - epsilon: The width parameter for the RBF kernel.
+        - neighbors: Number of nearest neighbors to use.
+
+        Returns:
+        - q_s_pred: The predicted secondary modes for the given q_p_sample.
+        """
+        # Find the nearest neighbors in q_p_train
+        dist, idx = kdtree.query(q_p_sample.reshape(1, -1), k=neighbors)
+
+        # Extract the neighbor points and corresponding secondary modes
+        q_p_neighbors = q_p_train[idx].reshape(neighbors, -1)
+        q_s_neighbors = q_s_train[idx].reshape(neighbors, -1)
+
+        # Compute pairwise distances between the neighbors
+        dists_neighbors = squareform(pdist(q_p_neighbors))
+
+        # Compute the RBF matrix for the neighbors
+        Phi_neighbors = self.gaussian_rbf(dists_neighbors, epsilon)
+
+        # Regularization for numerical stability
+        Phi_neighbors += np.eye(neighbors) * 1e-8
+
+        # Solve for the RBF weights (W_neighbors)
+        W_neighbors = np.linalg.solve(Phi_neighbors, q_s_neighbors)
+
+        # Compute RBF kernel values between q_p_sample and its neighbors
+        rbf_values = self.gaussian_rbf(dist.flatten(), epsilon)
+
+        # Interpolate q_s using the precomputed weights and RBF kernel values
+        q_s_pred = rbf_values @ W_neighbors
+
+        return q_s_pred
 
     def plot_solution(self, U_new_flat, X, Y, time_step, iteration):
         """ Plot the 3D surface of the solution at a given nonlinear iteration and time step """
