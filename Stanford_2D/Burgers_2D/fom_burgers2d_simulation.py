@@ -33,7 +33,7 @@ if __name__ == "__main__":
     u0 = np.ones((len(X), 2))  # Initialize u0 for both components
     
     # Time discretization settings
-    Tf, At = 5.0, 0.05  # Final time and time step size
+    Tf, At = 25.0, 0.05  # Final time and time step size
     nTimeSteps = int(Tf / At)
     E = 0.2  # Diffusion coefficient
     
@@ -43,7 +43,6 @@ if __name__ == "__main__":
     
     # Create a list of all (mu1, mu2) pairs (3 x 3 grid)
     parameter_list = [(mu1, mu2) for mu1 in mu1_range for mu2 in mu2_range]
-    parameter_list = [parameter_list[0]]
     
     # Create an instance of the FEMBurgers2D class
     fem_burgers_2d = FEMBurgers2D(X, Y, T)
