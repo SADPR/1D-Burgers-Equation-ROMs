@@ -39,7 +39,7 @@ if __name__ == "__main__":
 
     # Time discretization settings
     At = 0.05  # Time step size
-    Tf = 2.0  # Final time
+    Tf = 25.0  # Final time
     nTimeSteps = int(Tf / At)
     E = 0.2  # Diffusion coefficient
 

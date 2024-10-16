@@ -7,6 +7,7 @@ import diffusion_matrix_parallel
 import convection_matrix_supg_parallel
 import boundary_conditions_parallel
 import sparse_solver_parallel
+import eigen_sparse_dense_operations
 import mkl_sparse_dense_operations
 import matplotlib.pyplot as plt
 from scipy.spatial.distance import pdist, squareform
@@ -59,7 +60,7 @@ class FEMBurgers2D:
 
         # Call C++ function to compute the mass matrix, passing precomputed N_values
         M_global = mass_matrix_parallel.assemble_mass_matrix(self.X, self.Y, self.T, self.N_values, self.wgp, self.zgp, n_nodes, n_elements, n_local_nodes)
-        return sp.csc_matrix(M_global)
+        return sp.csr_matrix(M_global)
 
     def compute_diffusion_matrix(self):
         n_nodes = len(self.X)
@@ -68,7 +69,7 @@ class FEMBurgers2D:
 
         # Call C++ function to compute the diffusion matrix, passing precomputed N_values and dN_dxi_values
         K_global = diffusion_matrix_parallel.assemble_diffusion_matrix(self.X, self.Y, self.T, self.N_values, self.dN_dxi_values, self.wgp, self.zgp, n_nodes, n_elements, n_local_nodes)
-        return sp.csc_matrix(K_global)
+        return sp.csr_matrix(K_global)
 
     def compute_convection_matrix_SUPG(self, U_n):
         n_nodes = len(self.X)
@@ -77,7 +78,7 @@ class FEMBurgers2D:
 
         # Call C++ function to compute the convection matrix with SUPG
         C_global = convection_matrix_supg_parallel.assemble_convection_matrix_supg(self.X, self.Y, self.T, self.N_values, self.dN_dxi_values, U_n, self.wgp, self.zgp, n_nodes, n_elements, n_local_nodes)
-        return sp.csc_matrix(C_global)
+        return sp.csr_matrix(C_global)
 
     def compute_forcing_vector(self, mu2):
         n_nodes = len(self.X)
@@ -379,14 +380,20 @@ class FEMBurgers2D:
                 elif projection == "LSPG":
                     # # LSPG projection Python 
                     # J_Phi = A @ Phi
-                    # Ar = J_Phi.T @ J_Phi
-                    # br = J_Phi.T @ R
+                    # Ar_ = J_Phi.T @ J_Phi
+                    # br_ = J_Phi.T @ R
 
-                    # C++ implementation
-                    start_time = time.time()
+                    # Allocate memory for Ar and br
+                    Phi = np.asfortranarray(Phi)
+                    R = R.reshape(-1, 1)
+                    Ar = np.zeros((Phi.shape[1], Phi.shape[1]))
+                    br = np.zeros(Phi.shape[1])
+                    Ar = np.asfortranarray(Ar)
+                    br = np.asfortranarray(br)
 
-                    # Using the C++ function to compute Ar_cpp and br_cpp
-                    Ar, br = mkl_sparse_dense_operations.compute_Ar_br(A, Phi, R)
+                    # Call the function
+                    mkl_sparse_dense_operations.compute_Ar_br(A, Phi, R, Ar, br)
+                    print(f"    Projection time cpp: {time.time() - start_time:.6f} seconds")
                 else:
                     raise ValueError(f"Projection method '{projection}' is not available. Please use 'Galerkin' or 'LSPG'.")
                 print(f"    Projection time: {time.time() - start_time:.6f} seconds")
@@ -469,6 +476,7 @@ class FEMBurgers2D:
         """
         n_nodes = len(self.X)
         total_dofs = n_nodes * 2  # Total degrees of freedom (u_x and u_y components for each node)
+        U_s = np.asfortranarray(U_s)
 
         # Flatten the initial condition
         u0_flat = np.concatenate([u0[:, 0], u0[:, 1]])  # Shape: (total_dofs,)
@@ -505,7 +513,10 @@ class FEMBurgers2D:
             U_new_flat = U_n_flat.copy()  # Initial guess for U_new_flat
 
             # Project the current state onto the primary POD basis
+            # Measure time for projecting the current state onto the primary POD basis
+            start_time = time.time()
             q_p = U_p.T @ U_n_flat
+            print(f"Projection onto primary POD basis time: {time.time() - start_time:.6f} seconds")
 
             error_U = 1
             k = 0
@@ -515,37 +526,72 @@ class FEMBurgers2D:
             while (error_U > tol) and (k < max_iter):  # Nonlinear solver loop
                 print(f"  Iteration: {k}, Error: {error_U:.2e}")
 
-                # Compute residual and system matrix
+                # Measure time for residual and system matrix computation
+                start_time = time.time()
                 R, A = self.compute_residual(U_new_flat, U_n_flat, At, M, E, K, F)
+                print(f"    Residual and system matrix computation time: {time.time() - start_time:.6f} seconds")
 
+                # Measure time for boundary conditions application
+                start_time = time.time()
                 U_current_flat = U_new_flat.copy()  # This is U_current in the current Newton iteration
                 A, R = boundary_conditions_parallel.apply_boundary_conditions(A, R, U_current_flat, boundary_dofs_u_x, mu1)
+                print(f"    Boundary conditions application time: {time.time() - start_time:.6f} seconds")
 
-                # Project the residual and system matrix into the reduced basis using RBF
+                # Measure time for RBF Jacobian computation
+                start_time = time.time()
                 rbf_jacobian = self.compute_rbf_jacobian_nearest_neighbours_dynamic(kdtree, q_p_train, q_s_train, q_p, epsilon, neighbors)
-                dD_u_dq = U_p + U_s @ rbf_jacobian
+                print(f"    RBF Jacobian computation time: {time.time() - start_time:.6f} seconds")
 
+                # projected_rbf_jacobian = U_s @ rbf_jacobian
+                
+                start_time = time.time()
+                rbf_jacobian = np.asfortranarray(rbf_jacobian)
+                # Allocate memory for projected_rbf_jacobian directly in Fortran order
+                projected_rbf_jacobian = np.zeros((U_s.shape[0], rbf_jacobian.shape[1]), order='F')
+                mkl_sparse_dense_operations.multiply_dense_matrices_mkl(U_s, rbf_jacobian, projected_rbf_jacobian, False)
+                dD_u_dq = U_p + projected_rbf_jacobian
+                print(f"    Project and sum RBF Jacobian time: {time.time() - start_time:.6f} seconds")
+                
+                start_time = time.time()
                 if projection == "Galerkin":
                     # Galerkin projection
                     Ar = dD_u_dq.T @ A @ dD_u_dq
                     br = dD_u_dq.T @ R
                 elif projection == "LSPG":
                     # LSPG projection
-                    J_dD_u_dq = A @ dD_u_dq
-                    Ar = J_dD_u_dq.T @ J_dD_u_dq
-                    br = J_dD_u_dq.T @ R
+                    # J_dD_u_dq = A @ dD_u_dq
+                    # Ar_ = J_dD_u_dq.T @ J_dD_u_dq
+                    # br_ = J_dD_u_dq.T @ R
 
-                # Solve the reduced system
+                    # Call the C++ function
+                    dD_u_dq = np.asfortranarray(dD_u_dq)
+
+                    # Allocate memory for Ar and br directly in Fortran order
+                    Ar = np.zeros((dD_u_dq.shape[1], dD_u_dq.shape[1]), order='F')
+                    br = np.zeros(dD_u_dq.shape[1], order='F')
+
+                    # Call the function
+                    mkl_sparse_dense_operations.compute_Ar_br(A, dD_u_dq, R, Ar, br, False)
+                print(f"    Projection time: {time.time() - start_time:.6f} seconds")
+                # Measure time for solving the reduced system
+                start_time = time.time()
                 delta_q_p = np.linalg.solve(Ar, -br)
+                print(f"    Reduced system solver time: {time.time() - start_time:.6f} seconds")
 
-                # Update the reduced coordinates q_p
+                # Measure time for updating reduced coordinates
+                start_time = time.time()
                 q_p += delta_q_p
+                print(f"    Update reduced coordinates time: {time.time() - start_time:.6f} seconds")
 
-                # Interpolate q_s using nearest neighbors dynamically
+                # Measure time for interpolating q_s
+                start_time = time.time()
                 q_s = self.interpolate_with_rbf_nearest_neighbours_dynamic(kdtree, q_p_train, q_s_train, q_p, epsilon, neighbors)
+                print(f"    Interpolation time for q_s: {time.time() - start_time:.6f} seconds")
 
-                # Reconstruct the solution using the POD-RBF model
+                # Measure time for reconstructing the solution
+                start_time = time.time()
                 U1 = U_p @ q_p + U_s @ q_s
+                print(f"    Solution reconstruction time: {time.time() - start_time:.6f} seconds")
 
                 # Compute the error and update the solution
                 error_U = np.linalg.norm(U1 - U_new_flat) / (np.linalg.norm(U1) + 1e-12)
@@ -559,6 +605,7 @@ class FEMBurgers2D:
             U_PROM_flat[n + 1, :] = U_new_flat
 
         return U_PROM_flat
+
 
 
     def compute_rbf_jacobian_nearest_neighbours_dynamic(self, kdtree, q_p_train, q_s_train, q_p_sample, epsilon, neighbors):

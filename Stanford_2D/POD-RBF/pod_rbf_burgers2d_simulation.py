@@ -16,8 +16,8 @@ if __name__ == "__main__":
     mu2 = 0.0190
 
     # POD-RBF parameters
-    epsilon = 0.0001  # Example epsilon for the RBF kernel
-    neighbors = 50  # Number of nearest neighbors for the RBF interpolation
+    epsilon = 0.01  # Example epsilon for the RBF kernel
+    neighbors = 451  # Number of nearest neighbors for the RBF interpolation
     use_num_modes = True  # Set to True to use number of modes, False to use tolerance
     num_primary_modes = 10  # Number of primary modes to use
     num_secondary_modes = 140  # Number of secondary modes to use
