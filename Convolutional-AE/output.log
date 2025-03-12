@@ -1,0 +1,26 @@
+/usr/local/lib/python3.10/dist-packages/torch/optim/lr_scheduler.py:28: UserWarning: The verbose parameter is deprecated. Please use get_last_lr() to access the learning rate.
+  warnings.warn("The verbose parameter is deprecated. Please use get_last_lr() "
+/usr/local/lib/python3.10/dist-packages/torch/autograd/graph.py:744: UserWarning: CUDA initialization: The NVIDIA driver on your system is too old (found version 11040). Please update your GPU driver by downloading and installing a new version from the URL: http://www.nvidia.com/Download/index.aspx Alternatively, go to: https://pytorch.org to install a PyTorch version that has been compiled with your version of the CUDA driver. (Triggered internally at ../c10/cuda/CUDAFunctions.cpp:108.)
+  return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+Original all_snapshots shape: (513, 248000)
+Reduced all_snapshots shape (512 nodes): (513, 248000)
+Reshaped all_snapshots for Conv1D: torch.Size([248000, 1, 513])
+Training dataset size: 198400
+Validation dataset size: 49600
+Epoch [1/100], Train Loss: 0.012257, Val Loss: 0.001967
+Epoch [2/100], Train Loss: 0.002018, Val Loss: 0.001653
+Epoch [3/100], Train Loss: 0.001209, Val Loss: 0.000488
+Epoch [4/100], Train Loss: 0.000920, Val Loss: 0.000538
+Epoch [5/100], Train Loss: 0.000767, Val Loss: 0.000657
+Traceback (most recent call last):
+  File "/home/sebastianadpr/Documents/Burgers_1D/Convolutional-AE/train_convolutional_autoencoder_carlberg.py", line 141, in <module>
+    train_model(model, train_loader, val_loader, criterion, optimizer, scheduler, num_epochs=100, patience=10)
+  File "/home/sebastianadpr/Documents/Burgers_1D/Convolutional-AE/train_convolutional_autoencoder_carlberg.py", line 108, in train_model
+    loss.backward()
+  File "/usr/local/lib/python3.10/dist-packages/torch/_tensor.py", line 525, in backward
+    torch.autograd.backward(
+  File "/usr/local/lib/python3.10/dist-packages/torch/autograd/__init__.py", line 267, in backward
+    _engine_run_backward(
+  File "/usr/local/lib/python3.10/dist-packages/torch/autograd/graph.py", line 744, in _engine_run_backward
+    return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+KeyboardInterrupt

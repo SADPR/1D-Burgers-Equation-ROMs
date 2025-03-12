@@ -1,0 +1,52 @@
+// Convolutional Autoencoder
+digraph {
+	Input [label="Input Layer
+1x512" shape=box]
+	Conv1 [label="Conv1d
+16x512
+Kernel:3, Padding:1" shape=box]
+	MaxPool1 [label="MaxPool1d
+16x256
+Stride:2" shape=box]
+	Conv2 [label="Conv1d
+32x256
+Kernel:3, Padding:1" shape=box]
+	MaxPool2 [label="MaxPool1d
+32x128
+Stride:2" shape=box]
+	Conv3 [label="Conv1d
+64x128
+Kernel:3, Padding:1" shape=box]
+	MaxPool3 [label="MaxPool1d
+64x64
+Stride:2" shape=box]
+	FC1 [label="Fully Connected
+64x64
+→ Latent Dim" shape=ellipse]
+	FC2 [label="Fully Connected
+Latent Dim
+→ 64x64" shape=ellipse]
+	DeConv1 [label="ConvTranspose1d
+64x128
+Kernel:4, Stride:2, Padding:1" shape=box]
+	DeConv2 [label="ConvTranspose1d
+32x256
+Kernel:4, Stride:2, Padding:1" shape=box]
+	DeConv3 [label="ConvTranspose1d
+16x512
+Kernel:4, Stride:2, Padding:1" shape=box]
+	Output [label="Output Layer
+1x512" shape=box]
+	Input -> Conv1
+	Conv1 -> MaxPool1
+	MaxPool1 -> Conv2
+	Conv2 -> MaxPool2
+	MaxPool2 -> Conv3
+	Conv3 -> MaxPool3
+	MaxPool3 -> FC1
+	FC1 -> FC2
+	FC2 -> DeConv1
+	DeConv1 -> DeConv2
+	DeConv2 -> DeConv3
+	DeConv3 -> Output
+}
