@@ -262,6 +262,90 @@ class FEMBurgers:
                     dC_dU_global[element_nodes[i], element_nodes[j]] += dC_dU_element[i, j]
 
         return dC_dU_global.tocsc()  # Convert to compressed sparse column format for efficiency
+    
+    def compute_supg_term(self, U_n, mu2):
+        """
+        Computes the SUPG stabilization term for the inviscid Burgers' equation:
+            R(u) = (u * d(u)/dx) - f(x)
+
+        The code integrates:
+            tau_e * R(u) * (dN/dx)
+        over each element, where tau_e is the local stabilization parameter.
+
+        Parameters
+        ----------
+        U_n   : ndarray
+            The current nodal solution vector (size = n_nodes).
+        mu2   : float
+            Parameter for the forcing term f(x) = 0.02 * exp(mu2 * x).
+
+        Returns
+        -------
+        S_global : ndarray
+            Nodal vector of the SUPG stabilization contribution.
+        """
+        n_nodes = len(self.X)
+        n_elements, n_local_nodes = self.T.shape
+        S_global = np.zeros(n_nodes)
+
+        # User-chosen factor for tau:
+        alpha = 0.5
+        # Small offset to avoid division-by-zero or extremely large tau:
+        eps_vel = 1.0e-10
+
+        for e in range(n_elements):
+            element_nodes = self.T[e, :] - 1
+            x_element = self.X[element_nodes]        # e.g., [x_left, x_right]
+            u_element = U_n[element_nodes]           # local solution at the 2 nodes
+            h_e = x_element[1] - x_element[0]        # element length
+
+            # Average velocity in this element:
+            u_e = np.mean(u_element)
+
+            # Stabilization param tau_e ~ alpha * (h_e / (2 * |u_e|)) 
+            # (commonly used in 1D for convection-dominated problems)
+            vel_scale = abs(u_e) if abs(u_e) > eps_vel else eps_vel
+            tau_e = alpha * h_e / (2.0 * vel_scale)
+
+            # Approx. derivative du/dx in the element:
+            du_dx = (u_element[1] - u_element[0]) / h_e
+
+            # Prepare local array for accumulation
+            S_element = np.zeros(n_local_nodes)
+
+            # Gauss integration in the reference element [-1,+1]
+            for gp in range(self.ngaus):
+                N_gp = self.N[gp, :]
+                dN_dxi_gp = self.Nxi[gp, :]
+
+                # Jacobian
+                J = dN_dxi_gp @ x_element
+                dN_dx_gp = dN_dxi_gp / J
+
+                # Physical coordinate at this Gauss point
+                x_gp = N_gp @ x_element
+
+                # Field values at the Gauss point
+                u_gp = N_gp @ u_element
+                # Forcing term at x_gp
+                f_gp = 0.02 * np.exp(mu2 * x_gp)
+
+                # PDE residual (inviscid Burgers):
+                # R(u) = (u * du/dx) - f(x)
+                R_gp = (u_gp * du_dx) - f_gp
+
+                # Weighting (Jacobian, Gauss weight)
+                dV = self.wgp[gp] * abs(J)
+
+                # Add the contribution:
+                S_element += tau_e * R_gp * dN_dx_gp * dV
+
+            # Assemble local SUPG contributions into the global vector
+            for i in range(n_local_nodes):
+                S_global[element_nodes[i]] += S_element[i]
+
+        return S_global
+
 
     def fom_burgers_newton(self, At, nTimeSteps, u0, mu1, E, mu2):
         m = len(self.X) - 1
@@ -348,65 +432,8 @@ class FEMBurgers:
                 # Compute convection matrix using the current solution guess
                 C = self.compute_convection_matrix(U0)
 
-                # Compute forcing vector
-                F = self.compute_forcing_vector(mu2)
-
-                # Form the system matrix A
-                A = M + At * C + At * E * K
-
-                # Modify A for boundary conditions
-                A[0, :] = 0
-                A[0, 0] = 1
-
-                # Compute the right-hand side vector b
-                b = M @ U[:, n] + At * F
-
-                # Modify b for boundary conditions
-                b[0] = mu1
-
-                # Compute the residual R
-                R = A @ U0 - b
-
-                # Solve the linear system J * δU = -R
-                delta_U = spla.spsolve(A, -R)
-
-                # Update the solution using the correction term
-                U1 = U0 + delta_U
-
-                # Compute the error to check for convergence
-                error_U = np.linalg.norm(delta_U) / np.linalg.norm(U1)
-
-                # Update the guess for the next iteration
-                U0 = U1
-                k += 1
-
-            # Store the converged solution for this time step
-            U[:, n + 1] = U1
-
-        return U
-
-    def fom_burgers_dirichlet(self, At, nTimeSteps, u0, mu1, E, mu2):
-        m = len(self.X) - 1
-
-        # Allocate memory for the solution matrix
-        U = np.zeros((m + 1, nTimeSteps + 1))
-
-        # Initial condition
-        U[:, 0] = u0
-
-        M = self.compute_mass_matrix()
-        K = self.compute_diffusion_matrix()
-
-        for n in range(nTimeSteps):
-            print(f"Time Step: {n}. Time: {n * At}")
-            U0 = U[:, n]
-            error_U = 1
-            k = 0
-            while (error_U > 1e-6) and (k < 20):
-                print(f"Iteration: {k}, Error: {error_U}")
-
-                # Compute convection matrix using the current solution guess
-                C = self.compute_convection_matrix(U0)
+                # Compute SUPG term
+                S = self.compute_supg_term(U0, mu2)
 
                 # Compute forcing vector
                 F = self.compute_forcing_vector(mu2)
@@ -419,21 +446,10 @@ class FEMBurgers:
                 A[0, 0] = 1
 
                 # Compute the right-hand side vector b
-                b = M @ U[:, n] + At * F
-
-                # Modify A for boundary conditions
-                A[0, :] = 0
-                A[0, 0] = 1
+                b = M @ U[:, n] + At * F - At * S
 
                 # Modify b for boundary conditions
                 b[0] = mu1
-
-                # Adjust b[1] for the influence of u1*
-                b[1] -= A[1, 0] * mu1  # Subtract the effect of K_{21}^1 * u1* from b[1]
-
-                # Ensure A[1, 0] is also zeroed out if A[1, 0] was non-zero:
-                A[1, 0] = 0
-
 
                 # Compute the residual R
                 R = A @ U0 - b

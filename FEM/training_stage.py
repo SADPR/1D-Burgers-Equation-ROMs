@@ -30,7 +30,7 @@ def generate_lhs_samples(n_samples, param_ranges):
 
 # Parameter ranges for mu1 and mu2
 param_ranges = [(4.25, 5.5), (0.015, 0.03)]
-n_lhs_samples = 496  # Number of LHS samples excluding the 4 corners
+n_lhs_samples = 5  # Number of LHS samples excluding the 4 corners
 
 # Generate LHS samples
 lhs_samples = generate_lhs_samples(n_lhs_samples, param_ranges)
@@ -79,10 +79,10 @@ for i, (mu1, mu2) in enumerate(all_samples):
     u0 = np.ones_like(X)
 
     # Time discretization and numerical diffusion
-    Tf = 2
-    At = 0.07
+    Tf = 25
+    At = 0.05
     nTimeSteps = int(Tf / At)
-    E = 0.01
+    E = 0.00
 
     # Create an instance of the FEMBurgers class
     fem_burgers = FEMBurgers(X, T)
@@ -91,7 +91,7 @@ for i, (mu1, mu2) in enumerate(all_samples):
     U_FOM = fem_burgers.fom_burgers(At, nTimeSteps, u0, mu1, E, mu2)
 
     # Construct filename with parameters
-    filename = f"../new_training_data/simulation_mu1_{mu1:.2f}_mu2_{mu2:.4f}.npy"
+    filename = f"training_data/simulation_mu1_{mu1:.2f}_mu2_{mu2:.4f}.npy"
 
     # Save the result
     np.save(filename, U_FOM)

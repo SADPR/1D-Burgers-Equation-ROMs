@@ -19,13 +19,13 @@ if __name__ == "__main__":
     u0 = np.ones_like(X)
 
     # Time discretization and numerical diffusion
-    Tf = 35
-    At = 0.07
+    Tf = 1.0
+    At = 0.05
     nTimeSteps = int(Tf / At)
-    E = 0.01
+    E = 0.00
 
     # Parameters
-    mu1 = 4.77
+    mu1 = 4.75
     mu2 = 0.0200
 
     # Create an instance of the FEMBurgers class
@@ -44,7 +44,7 @@ if __name__ == "__main__":
     U = U_FOM
     fig, ax = plt.subplots()
     line, = ax.plot(X, U[:, 0], label='Solution over time')
-    ax.set_xlim(a, b)
+    ax.set_xlim(a, 5)
     ax.set_ylim(0, 8)
     ax.set_xlabel('x')
     ax.set_ylabel('u')
@@ -58,10 +58,10 @@ if __name__ == "__main__":
     ani = FuncAnimation(fig, update, frames=nTimeSteps + 1, blit=True)
     plt.show()
 
-    # Save animation as GIF
-    # gif_filename = f"simulation_mu1_{mu1:.2f}_mu2_{mu2:.4f}.gif"
-    # ani.save(gif_filename, writer=PillowWriter(fps=10))
-    # plt.close(fig)  # Close the figure to avoid displaying it
+    #Save animation as GIF
+    gif_filename = f"simulation_mu1_{mu1:.2f}_mu2_{mu2:.4f}.gif"
+    ani.save(gif_filename, writer=PillowWriter(fps=10))
+    plt.close(fig)  # Close the figure to avoid displaying it
 
 
 
