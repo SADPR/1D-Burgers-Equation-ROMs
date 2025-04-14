@@ -159,6 +159,83 @@ class FVBurgers:
             Array of shape (N,) with the source term at each physical cell center.
         """
         return 0.02 * np.exp(mu2 * self.x_centers)
+    
+
+    def compute_flux_derivatives(self, uL, uR):
+        """
+        Compute derivatives of the Godunov flux with respect to left and right states.
+        
+        Parameters
+        ----------
+        uL : float
+            Left state.
+        uR : float
+            Right state.
+        
+        Returns
+        -------
+        df_duL : float
+            Derivative with respect to uL.
+        df_duR : float
+            Derivative with respect to uR.
+        """
+        if uL > uR:  # Shock
+            s = 0.5 * (uL + uR)
+            if s > 0:
+                return uL, 0
+            else:
+                return 0, uR
+        else:  # Rarefaction
+            if uL >= 0:
+                return uL, 0
+            elif uR <= 0:
+                return 0, uR
+            else:  # uL < 0 < uR
+                return 0, 0
+
+    def compute_jacobian_analytical(self, U, U_prev, dt, s):
+        """
+        Computes the analytical Jacobian of the residual for Burgers' equation.
+        
+        Parameters
+        ----------
+        U : ndarray
+            Current solution vector (with ghost cells, size N+2).
+        U_prev : ndarray
+            Previous time step solution (with ghost cells, size N+2).
+        dt : float
+            Time step size.
+        s : ndarray
+            Source term at cell centers (size N).
+        
+        Returns
+        -------
+        J : ndarray
+            Jacobian matrix of shape (N, N).
+        """
+        N = self.N
+        J = np.zeros((N, N))
+        
+        # Compute flux derivatives at all interfaces (0.5 to N+0.5)
+        df_duL = np.zeros(N + 1)  # Interfaces j+0.5, j=0 to N
+        df_duR = np.zeros(N + 1)
+        for j in range(N + 1):
+            uL = U[j]
+            uR = U[j + 1]
+            df_duL[j], df_duR[j] = self.compute_flux_derivatives(uL, uR)
+        
+        # Assemble tridiagonal Jacobian
+        for k in range(N):
+            # Sub-diagonal (k > 0)
+            if k > 0:
+                J[k, k - 1] = - (dt / self.dx) * df_duL[k]
+            # Diagonal
+            J[k, k] = 1 + (dt / self.dx) * (df_duL[k + 1] - df_duR[k])
+            # Super-diagonal (k < N-1)
+            if k < N - 1:
+                J[k, k + 1] = (dt / self.dx) * df_duR[k + 1]
+        
+        return J
 
 
     def fom_burgers_newton(self, dt, n_steps, u0, mu1, mu2):
@@ -210,7 +287,7 @@ class FVBurgers:
             
             for k in range(max_iter):
                 R = self.compute_residual(u_guess, U_ext, dt, s)
-                J = self.compute_jacobian_fd(u_guess, U_ext, dt, s)
+                J = self.compute_jacobian_analytical(u_guess, U_ext, dt, s)
 
                 # Solve linear system
                 delta_u = np.linalg.solve(J, -R)

@@ -10,18 +10,18 @@ mu2_values = np.linspace(0.015, 0.03, 3)  # [0.015, 0.0225, 0.03]
 all_samples = np.array([[mu1, mu2] for mu1 in mu1_values for mu2 in mu2_values])
 
 # Create directories
-os.makedirs("training_data", exist_ok=True)
-os.makedirs("training_gifs", exist_ok=True)
+os.makedirs("fem_training_data", exist_ok=True)
+os.makedirs("fem_training_gifs", exist_ok=True)
 
 # Save parameter combinations
-np.save("training_data/parameter_combinations.npy", all_samples)
+np.save("fem_training_data/parameter_combinations.npy", all_samples)
 
 # Visualize the sampling
 plt.scatter(all_samples[:, 0], all_samples[:, 1])
 plt.xlabel('$\mu_1$')
 plt.ylabel('$\mu_2$')
 plt.title('Training Grid Sampling ($\mu_1$, $\mu_2$)')
-plt.savefig("training_data/training_grid_plot.pdf")
+plt.savefig("fem_training_data/training_grid_plot.pdf")
 plt.close()
 
 # Run simulations
@@ -49,7 +49,7 @@ for i, (mu1, mu2) in enumerate(all_samples):
     U_FOM = fem_burgers.fom_burgers(At, nTimeSteps, u0, mu1, E, mu2)
 
     # Save solution
-    file_name = f"training_data/simulation_mu1_{mu1:.3f}_mu2_{mu2:.4f}.npy"
+    file_name = f"fem_training_data/fem_simulation_mu1_{mu1:.3f}_mu2_{mu2:.4f}.npy"
     np.save(file_name, U_FOM)
 
     # Save GIF
@@ -67,7 +67,7 @@ for i, (mu1, mu2) in enumerate(all_samples):
         return line,
 
     ani = FuncAnimation(fig, update, frames=nTimeSteps + 1, blit=True)
-    gif_file = f"training_gifs/simulation_mu1_{mu1:.3f}_mu2_{mu2:.4f}.gif"
+    gif_file = f"fem_training_gifs/fem_simulation_mu1_{mu1:.3f}_mu2_{mu2:.4f}.gif"
     ani.save(gif_file, writer=PillowWriter(fps=10))
     plt.close(fig)
 
