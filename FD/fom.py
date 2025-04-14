@@ -19,13 +19,13 @@ if __name__ == "__main__":
     u0 = np.ones(N)  # or any other function of x_nodes
 
     # --- Time Parameters ---
-    Tf = 5.0
+    Tf = 1.0
     dt = 0.05
     n_steps = int(Tf / dt)
 
     # --- Physical Parameters ---
-    mu1 = 4.75    # Dirichlet BC at left boundary
-    mu2 = 0.03    # Source exponent
+    mu1 = 2    # Dirichlet BC at left boundary
+    mu2 = 0.0    # Source exponent
 
     # --- Instantiate the FD solver ---
     fd_burgers = FDBurgers(a, b, N)
