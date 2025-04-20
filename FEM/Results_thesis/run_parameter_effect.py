@@ -17,10 +17,10 @@ def run_and_save_simulations():
     u0 = np.ones_like(X)
 
     # Time discretization and numerical diffusion
-    Tf = 20  # Covering up to t=20
-    At = 0.07
+    Tf = 25  # Covering up to t=20
+    At = 0.05
     nTimeSteps = int(Tf / At)
-    E = 0.01
+    E = 0.00
 
     # Parameters ranges
     mu1_values = np.linspace(4.25, 5.5, 5)  # Vary mu1 across 5 values
