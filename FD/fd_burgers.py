@@ -6,7 +6,8 @@ class FDBurgers:
     Uses:
       - Second-order central differences for convection,
       - Backward Euler in time,
-      - Newton-Raphson with analytical or finite-difference Jacobian.
+      - Newton-Raphson with analytical or finite-difference Jacobian,
+      - Optional artificial viscosity for stabilization.
     """
 
     def __init__(self, a, b, N):
@@ -26,19 +27,20 @@ class FDBurgers:
 
     def compute_residual(self, U, U_prev, dt, s):
         R = np.zeros_like(U)
+        nu_artificial = 0.25 * self.dx * np.max(np.abs(U))
         for i in range(1, self.N - 1):
-            # Second-order central difference for conservative form of convection
             conv = (0.5 * U[i + 1]**2 - 0.5 * U[i - 1]**2) / (2 * self.dx)
-            R[i] = (U[i] - U_prev[i]) / dt + conv - s[i]
+            diff = nu_artificial * (U[i + 1] - 2 * U[i] + U[i - 1]) / self.dx**2
+            R[i] = (U[i] - U_prev[i]) / dt + conv - s[i] - diff
         return R
 
     def compute_jacobian_analytical(self, U, U_prev, dt, s):
         J = np.zeros((self.N, self.N))
+        nu_artificial = 0.25 * self.dx * np.max(np.abs(U))
         for i in range(1, self.N - 1):
-            # Derivatives of the central difference convection term
-            J[i, i - 1] = -U[i - 1] / (2 * self.dx)
-            J[i, i + 1] = U[i + 1] / (2 * self.dx)
-            J[i, i] = 1 / dt  # Only time derivative here
+            J[i, i - 1] = -U[i - 1] / (2 * self.dx) - nu_artificial / self.dx**2
+            J[i, i + 1] = U[i + 1] / (2 * self.dx) - nu_artificial / self.dx**2
+            J[i, i] = 1 / dt + 2 * nu_artificial / self.dx**2
         return J
 
     def compute_jacobian_fd(self, U, U_prev, dt, s, epsilon=1e-8):
