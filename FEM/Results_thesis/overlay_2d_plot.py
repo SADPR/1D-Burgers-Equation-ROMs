@@ -2,8 +2,14 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # Enable LaTeX rendering with serif font
-plt.rc('text', usetex=True)
-plt.rc('font', family='serif')
+# LaTeX-friendly plot settings
+plt.rcParams.update({
+    "text.usetex": True,
+    "mathtext.fontset": "stix",
+    "font.family": ["STIXGeneral"],
+})
+plt.rcParams['text.latex.preamble'] = r'\usepackage{bm}'
+plt.rc('font', size=14)
 
 # Domain and discretization settings
 a = 0
@@ -30,11 +36,11 @@ for idx in time_indices:
     plt.plot(X, U_FOM[:, idx], color='black')
 
 # Axes and formatting
-plt.xlabel(r'$x$', fontsize=14)
-plt.ylabel(r'$u(x,t)$', fontsize=14)
-plt.title(r'$\boldsymbol{\mu} = [4.875,\; 0.0225]$', fontsize=14)
+plt.xlabel(r'$x$')
+plt.ylabel(r'$u(x,t)$')
+plt.title(r'$\mu_1 = 4.875, \mu_2 = 0.0225$')
 plt.xlim([0, 100])
-plt.ylim([0, 8])
+plt.ylim([0.5, 6.5])
 plt.grid(True)
 plt.tight_layout()
 

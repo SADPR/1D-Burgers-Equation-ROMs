@@ -49,7 +49,7 @@ def plot_simulation_results_3d():
     ax.set_ylabel(r'$t$')
     ax.set_xlim([0, 100])
     ax.set_ylim([min(times_of_interest), max(times_of_interest)])
-    ax.set_zlim([0, 8])
+    ax.set_zlim([0.5,8.0])
     ax.view_init(elev=30, azim=-60)  # Adjust the viewing angle for better visibility
 
     # Add the legend with only one label per mu1 value
@@ -86,7 +86,7 @@ def plot_simulation_results_3d():
     ax.set_ylabel(r'$t$')
     ax.set_xlim([0, 100])
     ax.set_ylim([min(times_of_interest), max(times_of_interest)])
-    ax.set_zlim([0, 8])
+    ax.set_zlim([0.5,8.0])
     ax.view_init(elev=30, azim=-60)  # Adjust the viewing angle for better visibility
 
     # Add the legend with only one label per mu2 value
@@ -139,7 +139,7 @@ def plot_simulation_results_subplots():
         ax.set_xlabel(r'$x$')
         ax.set_ylabel(r'$u$')
         ax.set_xlim([0, 100])
-        ax.set_ylim([0, 8])
+        ax.set_ylim([0.5,6.5])
         ax.grid(True)
         if t_index == time_indices[0]:
             ax.legend()
@@ -171,7 +171,7 @@ def plot_simulation_results_subplots():
         ax.set_xlabel(r'$x$')
         ax.set_ylabel(r'$u$')
         ax.set_xlim([0, 100])
-        ax.set_ylim([0, 8])
+        ax.set_ylim([0.5,6.5])
         ax.grid(True)
         if t_index == time_indices[0]:
             ax.legend()
