@@ -11,12 +11,11 @@ sys.path.append(parent_dir)
 from fem_burgers import FEMBurgers
 
 if __name__ == "__main__":
-    # Domain
-    a = 0
-    b = 100
+    # Domain and mesh
+    a, b = 0, 100
 
     # Mesh
-    m = int(256 * 2)
+    m = 511
     h = (b - a) / m
     X = np.linspace(a, b, m + 1)
     T = np.array([np.arange(1, m + 1), np.arange(2, m + 2)]).T
@@ -24,20 +23,23 @@ if __name__ == "__main__":
     # Initial condition
     u0 = np.ones_like(X)
 
-    # Boundary conditions
-    uxa = 4.76  # u(0,t) = 4.3
+    # Initial condition
+    u0 = np.ones_like(X)
 
-    # Time discretization and numerical diffusion
-    Tf = 35
-    At = 0.07
+    # Time discretization
+    Tf = 25
+    At = 0.05
     nTimeSteps = int(Tf / At)
-    E = 0.01
+    E = 0.00
+
+    # Boundary conditions
+    mu1 = 4.750  # u(0,t) = 4.750
 
     # Parameter mu2
-    mu2 = 0.0182
+    mu2 = 0.0200
 
     # Tolerances for ROM
-    tolerances = [1e-1, 5e-2, 2e-2, 1e-2, 1e-3, 1e-4]
+    tolerances = [1e-2, 1e-3, 1e-4, 1e-5, 1e-6]
 
     # Create an instance of the FEMBurgers class
     fem_burgers = FEMBurgers(X, T)
@@ -54,7 +56,7 @@ if __name__ == "__main__":
         Phi = np.load(f"../modes/U_modes_tol_{tol:.0e}.npy")
 
         # Compute the PROM solution
-        U_PROM = fem_burgers.pod_prom_burgers(At, nTimeSteps, u0, uxa, E, mu2, Phi, projection="Galerkin")
+        U_PROM = fem_burgers.pod_prom_burgers(At, nTimeSteps, u0, mu1, E, mu2, Phi, projection="LSPG")
 
         # Save the solution
         np.save(os.path.join(save_dir, f"U_PROM_tol_{tol:.0e}.npy"), U_PROM)

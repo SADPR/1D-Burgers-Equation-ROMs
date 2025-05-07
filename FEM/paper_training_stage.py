@@ -30,7 +30,7 @@ for i, (mu1, mu2) in enumerate(all_samples):
 
     # Domain and mesh
     a, b = 0, 100
-    m = 512
+    m = 511
     h = (b - a) / m
     X = np.linspace(a, b, m + 1)
     T = np.array([np.arange(1, m + 1), np.arange(2, m + 2)]).T

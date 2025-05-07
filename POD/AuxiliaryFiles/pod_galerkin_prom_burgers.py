@@ -14,12 +14,11 @@ sys.path.append(parent_dir)
 from fem_burgers import FEMBurgers
 
 if __name__ == "__main__":
-    # Domain
-    a = 0
-    b = 100
+    # Domain and mesh
+    a, b = 0, 100
 
     # Mesh
-    m = int(256 * 2)
+    m = 511
     h = (b - a) / m
     X = np.linspace(a, b, m + 1)
     T = np.array([np.arange(1, m + 1), np.arange(2, m + 2)]).T
@@ -27,20 +26,17 @@ if __name__ == "__main__":
     # Initial condition
     u0 = np.ones_like(X)
 
-    umax = np.max(u0) + 0.1
-    umin = np.min(u0) - 0.1
+    # Time discretization
+    Tf = 25
+    At = 0.05
+    nTimeSteps = int(Tf / At)
+    E = 0.00
 
     # Boundary conditions
-    uxa = 4.76  # u(0,t) = 4.3
-
-    # Time discretization and numerical diffusion
-    Tf = 5
-    At = 0.07
-    nTimeSteps = int(Tf / At)
-    E = 0.01
+    mu1 = 4.750  # u(0,t) = 4.750
 
     # Parameter mu2
-    mu2 = 0.0182
+    mu2 = 0.0200
 
     # Create an instance of the FEMBurgers class
     fem_burgers = FEMBurgers(X, T)
@@ -51,7 +47,7 @@ if __name__ == "__main__":
 
     # Solution using PROM
     print('PROM method (Picard)...')
-    U_PROM = fem_burgers.pod_prom_burgers(At, nTimeSteps, u0, uxa, E, mu2, Phi, projection="LSPG")
+    U_PROM = fem_burgers.pod_prom_burgers(At, nTimeSteps, u0, mu1, E, mu2, Phi, projection="LSPG")
 
     np.save("pod_prom.npy", U_PROM)
 

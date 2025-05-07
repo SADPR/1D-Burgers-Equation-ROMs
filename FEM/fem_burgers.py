@@ -471,8 +471,86 @@ class FEMBurgers:
             U[:, n + 1] = U1
 
         return U
+    
+    def pod_prom_burgers(self, At, nTimeSteps, u0, mu1, E, mu2, Phi, projection="Galerkin"):
+        m = len(self.X) - 1
 
-    def pod_prom_burgers(self, At, nTimeSteps, u0, uxa, E, mu2, Phi, projection="Galerkin"):
+        # Allocate memory for the solution matrix
+        U = np.zeros((m + 1, nTimeSteps + 1))
+
+        # Initial condition
+        U[:, 0] = u0
+
+        M = self.compute_mass_matrix()
+        K = self.compute_diffusion_matrix()
+
+        for n in range(nTimeSteps):
+            print(f"Time Step: {n}. Time: {n * At}")
+            U0 = U[:, n]
+            error_U = 1
+            k = 0
+            while (error_U > 1e-6) and (k < 20):
+                print(f"Iteration: {k}, Error: {error_U}")
+
+                # Compute convection matrix using the current solution guess
+                C = self.compute_convection_matrix(U0)
+
+                # Compute SUPG term
+                S = self.compute_supg_term(U0, mu2)
+
+                # Compute forcing vector
+                F = self.compute_forcing_vector(mu2)
+
+                # Form the system matrix A
+                A = M + At * C + At * E * K
+
+                # Modify A for boundary conditions
+                A[0, :] = 0
+                A[0, 0] = 1
+
+                # Compute the right-hand side vector b
+                b = M @ U[:, n] + At * F - At * S
+
+                # Modify b for boundary conditions
+                b[0] = mu1
+
+                # Compute the residual R
+                R = A @ U0 - b
+
+                if projection == "Galerkin":
+                    # Galerkin projection
+                    Ar = Phi.T @ A @ Phi
+                    br = Phi.T @ R
+                elif projection == "LSPG":
+                    # LSPG projection
+                    J_Phi = A @ Phi
+                    Ar = J_Phi.T @ J_Phi
+                    br = J_Phi.T @ R
+                else:
+                    raise ValueError(f"Projection method '{projection}' is not available. Please use 'Galerkin' or 'LSPG'.")
+
+                # Solve the reduced-order system for the correction δq
+                delta_q = np.linalg.solve(Ar, -br)
+
+                # Update the reduced coordinates q
+                q = Phi.T @ U0 + delta_q
+
+                # Compute the updated solution in the full-order space
+                U1 = Phi @ q
+
+                # Compute the error to check for convergence
+                error_U = np.linalg.norm(delta_q) / np.linalg.norm(q)
+
+                # Update the guess for the next iteration
+                U0 = U1
+                k += 1
+
+            # Store the converged solution for this time step
+            U[:, n + 1] = U1
+
+        return U
+
+    def pod_prom_burgers_(self, At, nTimeSteps, u0, uxa, E, mu2, Phi, projection="Galerkin"):
         m = len(self.X) - 1
 
         # Allocate memory for the solution matrix

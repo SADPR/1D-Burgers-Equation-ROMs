@@ -5,110 +5,86 @@ import os
 plt.rc('text', usetex=True)
 plt.rc('font', family='serif')
 
-def get_number_of_singular_values_for_given_tolerance(M, N, s, epsilon):
-    dimMATRIX = max(M, N)
-    tol = dimMATRIX * np.finfo(float).eps * max(s) / 2
-    R = np.sum(s > tol)  # Definition of numerical rank
-    if epsilon == 0:
-        K = R
-    else:
-        SingVsq = np.multiply(s, s)
-        SingVsq.sort()
-        normEf2 = np.sqrt(np.cumsum(SingVsq))
-        epsilon = epsilon * normEf2[-1]  # relative tolerance
-        T = sum(normEf2 < epsilon)
-        K = len(s) - T
-    K = min(R, K)
+def get_number_of_singular_values_for_given_tolerance(M, N, s, epsilon_squared):
+    s_sorted = np.sort(s)[::-1]
+    squared_cumsum = np.cumsum(s_sorted ** 2)
+    squared_total = squared_cumsum[-1]
+    squared_relative_loss = 1.0 - (squared_cumsum / squared_total)
+    K = np.argmax(squared_relative_loss <= epsilon_squared) + 1
     return K
 
-def get_list_of_number_of_singular_values_for_list_of_tolerances(tolerances, s, M, N):
-    number_of_singular_values = []
-    for tol in tolerances:
-        number_of_singular_values.append(get_number_of_singular_values_for_given_tolerance(M, N, s, tol))
-    return number_of_singular_values
+def get_list_of_number_of_singular_values_for_list_of_tolerances(tolerances_squared, s, M, N):
+    return [get_number_of_singular_values_for_given_tolerance(M, N, s, eps2) for eps2 in tolerances_squared]
 
-def plot_singular_values(s, SnapshotsMatrix, tolerances=None):
+def plot_singular_values(s, SnapshotsMatrix, tolerances_squared=None):
     M, N = np.shape(SnapshotsMatrix)
 
-    plt.plot(s, marker='s', markevery=5, linewidth=1)  # alpha=0.9
+    linear_cumsum = np.cumsum(s)
+    total = np.sum(s)
+    linear_relative_loss = 1.0 - (linear_cumsum / total)
+
+    plt.figure(figsize=(8, 5))
+    plt.plot(linear_relative_loss, linewidth=2)
     plt.yscale('log')
-    colours = ['k', 'm', 'g', 'b', 'c', 'r', 'y']
-    plt.ylabel(r'$\frac{\sigma_i }{\sigma_{max}}$ (log scale)', size=15)
-    plt.xlabel(r'Index of $\sigma_i$', size=15)
-    if tolerances is not None:
-        singular_values_taken = get_list_of_number_of_singular_values_for_list_of_tolerances(tolerances, s, M, N)
-        counter = 0
-        for tol, sigmas in zip(tolerances, singular_values_taken):
-            print(f'For a tolerance of {tol}, {sigmas} modes are required')
-            plt.axvline(x=sigmas, ymin=0.05, ymax=0.95, c=colours[counter], label=r'$\epsilon$ = ' + "{:.0e}".format(tol))
-            counter += 1
-    plt.grid()
+    colours = ['k', 'm', 'g', 'b', 'r', 'c', 'y']
+    plt.ylabel(r'$1 - \frac{\sum_{i=1}^{n} \sigma_i}{\sum_{i=1}^{m} \sigma_i}$', size=15)
+    plt.xlabel(r'Singular value index $n$', size=15)
+
+    if tolerances_squared is not None:
+        singular_values_taken = get_list_of_number_of_singular_values_for_list_of_tolerances(tolerances_squared, s, M, N)
+        for counter, (eps2, n_modes) in enumerate(zip(tolerances_squared, singular_values_taken)):
+            eps_percent = eps2 * 100
+            plt.axvline(x=n_modes, ymin=0.05, ymax=0.95, c=colours[counter % len(colours)],
+                        label=rf'$\epsilon^2 = {eps_percent:.4g}\%$')
+
+    plt.grid(True, which="both", linestyle="--", linewidth=0.5)
     plt.legend()
-    plt.savefig("modes/singular_value_decay.pdf", format='pdf')
+    plt.tight_layout()
+    os.makedirs("modes", exist_ok=True)
+    plt.savefig("modes/singular_value_decay_linear_loss.pdf", format='pdf')
     plt.close()
 
+
 def plot_modes(U, num_modes=6):
-    # Domain and mesh settings
-    a = 0
-    b = 100
-    m = int(256 * 2)
+    a, b = 0, 100
+    m = 511
     X = np.linspace(a, b, m + 1)
 
     fig, axs = plt.subplots(3, 2, figsize=(12, 9))
     axs = axs.flatten()
 
     for i in range(num_modes):
-        mode = U[:, i]
-        ax = axs[i]
-        ax.plot(X, mode)  # Use X as the x-axis values
-        ax.set_xlim([a, b])  # Set the x-axis limits from 0 to 100
-        ax.set_title(rf'Mode {i+1}')
-        ax.grid(True)
+        axs[i].plot(X, U[:, i])
+        axs[i].set_xlim([a, b])
+        axs[i].set_title(rf'Mode {i+1}')
+        axs[i].grid(True)
 
     plt.suptitle(r'First 6 POD Modes', fontsize=16)
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-    fig.tight_layout()
     plt.subplots_adjust(top=0.9)
     plt.savefig("modes/first_6_modes.pdf", format='pdf')
     plt.close()
 
+def save_modes(U, s, tolerances_squared, snapshots):
+    M, N = snapshots.shape
+    singular_values_taken = get_list_of_number_of_singular_values_for_list_of_tolerances(tolerances_squared, s, M, N)
+    os.makedirs("modes", exist_ok=True)
 
-def save_modes(U, s, tolerances, snapshots):
-    M, N = np.shape(snapshots)
-    singular_values_taken = get_list_of_number_of_singular_values_for_list_of_tolerances(tolerances, s, M, N)
-
-    if not os.path.exists("modes"):
-        os.makedirs("modes")
-
-    for tol, num_modes in zip(tolerances, singular_values_taken):
+    for eps2, num_modes in zip(tolerances_squared, singular_values_taken):
         U_modes = U[:, :num_modes]
-        np.save(f"modes/U_modes_tol_{tol:.0e}.npy", U_modes)
-        print(f'Saved modes for tolerance {tol:.0e} to U_modes_tol_{tol:.0e}.npy')
+        np.save(f"modes/U_modes_tol_{eps2:.0e}.npy", U_modes)
+        print(f'Saved modes for tolerance epsilon^2 = {eps2:.0e} to U_modes_tol_{eps2:.0e}.npy')
 
 if __name__ == '__main__':
-    # Load all snapshot files from the training_data directory
-    snapshot_files = [f for f in os.listdir("../FEM/training_data") if f.endswith('.npy') and f.startswith('simulation_')]
-    
-    all_snapshots = []
-    for file in snapshot_files:
-        snapshots = np.load(os.path.join("../FEM/training_data", file))
-        all_snapshots.append(snapshots)
-    
-    # Stack all snapshots
+    snapshot_files = [f for f in os.listdir("../FEM/fem_training_data") if f.endswith('.npy') and f.startswith('fem_simulation_')]
+    all_snapshots = [np.load(os.path.join("../FEM/fem_training_data", file)) for file in snapshot_files]
     all_snapshots = np.hstack(all_snapshots)
 
-    # Compute the SVD of the fluctuation field
     U, s, _ = np.linalg.svd(all_snapshots, full_matrices=False)
 
-    # Define the tolerances
-    tols = [1e-1, 5e-2, 2e-2, 1e-2, 1e-3, 1e-4]
+    eps2_tols = [1e-2, 1e-3, 1e-4, 1e-5, 1e-6]  # Corresponding to 5%, 1%, 0.1%, ...
 
-    # Plot the singular value decay with tolerance lines
-    plot_singular_values(s, all_snapshots, tols)
-
-    # Plot the first 6 modes
+    plot_singular_values(s, all_snapshots, eps2_tols)
     plot_modes(U, num_modes=6)
-
-    # Save the modes for each tolerance
-    save_modes(U, s, tols, all_snapshots)
+    save_modes(U, s, eps2_tols, all_snapshots)
 
