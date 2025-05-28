@@ -82,7 +82,7 @@ if __name__ == '__main__':
 
     U, s, _ = np.linalg.svd(all_snapshots, full_matrices=False)
 
-    eps2_tols = [1e-2, 1e-3, 1e-4, 1e-5, 1e-6]  # Corresponding to 5%, 1%, 0.1%, ...
+    eps2_tols = [1e-2, 1e-3, 1e-4, 1e-5, 1e-6]  
 
     plot_singular_values(s, all_snapshots, eps2_tols)
     plot_modes(U, num_modes=6)

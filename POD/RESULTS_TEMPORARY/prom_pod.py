@@ -1,27 +1,19 @@
 import numpy as np
 import os
 import sys
+
 # Get the absolute path of the parent directory
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../FEM/'))
-
-# Add the parent directory to sys.path
 sys.path.append(parent_dir)
-
-# Now you can import the module
 from fem_burgers import FEMBurgers
 
 if __name__ == "__main__":
     # Domain and mesh
     a, b = 0, 100
-
-    # Mesh
     m = 511
     h = (b - a) / m
     X = np.linspace(a, b, m + 1)
     T = np.array([np.arange(1, m + 1), np.arange(2, m + 2)]).T
-
-    # Initial condition
-    u0 = np.ones_like(X)
 
     # Initial condition
     u0 = np.ones_like(X)
@@ -32,14 +24,18 @@ if __name__ == "__main__":
     nTimeSteps = int(Tf / At)
     E = 0.00
 
-    # Boundary conditions
-    mu1 = 4.750  # u(0,t) = 4.750
+    # Test points: each a tuple (mu1, mu2)
+    test_points = [
+        (4.75, 0.0200),
+        (5.00, 0.0250),
+        (5.25, 0.0175)
+    ]
 
-    # Parameter mu2
-    mu2 = 0.0200
-
-    # Tolerances for ROM
+    # ROM tolerances
     tolerances = [1e-2, 1e-3, 1e-4, 1e-5, 1e-6]
+
+    # Projection types
+    projections = ["Galerkin", "LSPG"]
 
     # Create an instance of the FEMBurgers class
     fem_burgers = FEMBurgers(X, T)
@@ -49,16 +45,23 @@ if __name__ == "__main__":
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
 
-    for tol in tolerances:
-        print(f'PROM method (LSPG) with tolerance {tol}...')
-        
-        # Load reduced basis for the given tolerance
-        Phi = np.load(f"../modes/U_modes_tol_{tol:.0e}.npy")
+    for mu1, mu2 in test_points:
+        for tol in tolerances:
+            for projection in projections:
+                print(f'{projection} PROM with mu1={mu1}, mu2={mu2}, tolerance={tol}...')
 
-        # Compute the PROM solution
-        U_PROM = fem_burgers.pod_prom_burgers(At, nTimeSteps, u0, mu1, E, mu2, Phi, projection="LSPG")
+                # Load reduced basis
+                Phi = np.load(f"../modes/U_modes_tol_{tol:.0e}.npy")
 
-        # Save the solution
-        np.save(os.path.join(save_dir, f"U_PROM_tol_{tol:.0e}.npy"), U_PROM)
+                # Compute PROM solution
+                U_PROM = fem_burgers.pod_prom_burgers(At, nTimeSteps, u0, mu1, E, mu2, Phi, projection=projection)
+
+                # Prepare filename
+                tag = "lspg" if projection.lower() == "lspg" else "galerkin"
+                filename = f"U_PROM_tol_{tol:.0e}_mu1_{mu1:.3f}_mu2_{mu2:.4f}_{tag}.npy"
+
+                # Save solution
+                np.save(os.path.join(save_dir, filename), U_PROM)
 
     print("All simulations completed and saved.")
+
