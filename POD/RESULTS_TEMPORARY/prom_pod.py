@@ -27,8 +27,8 @@ if __name__ == "__main__":
     # Test points: each a tuple (mu1, mu2)
     test_points = [
         (4.75, 0.0200),
-        (5.00, 0.0250),
-        (5.25, 0.0175)
+        (4.56, 0.0190),
+        (5.19, 0.0260)
     ]
 
     # ROM tolerances

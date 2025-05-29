@@ -27,54 +27,61 @@ def get_num_modes(tol):
     U_modes = np.load(modes_file)
     return U_modes.shape[1]
 
-def compute_l2_norm_error(U_FOM, U_ROM):
-    return np.linalg.norm(U_FOM - U_ROM) / np.linalg.norm(U_FOM)
-
-def plot_fom_rom_comparison(tol):
+def plot_fom_rom_comparison(tol, mu1=4.75, mu2=0.0200):
+    # Parameters
     a, b = 0, 100
     m = 511
     X = np.linspace(a, b, m + 1)
     At = 0.05
-    time_idx = int(5 / At)  # t = 5
+    time_idx = int(5 / At)  # time = 5s
+    tag_mu1 = f"{mu1:.3f}"
+    tag_mu2 = f"{mu2:.4f}"
 
+    # File paths
     save_dir = "rom_solutions"
-    fom_filename = "../../FEM/fem_testing_data/fem_simulation_mu1_4.750_mu2_0.0200.npy"
+    fom_filename = f"../../FEM/fem_testing_data/fem_simulation_mu1_{tag_mu1}_mu2_{tag_mu2}.npy"
+    rom_filename_lspg = os.path.join(save_dir, f"U_PROM_tol_{tol:.0e}_mu1_{tag_mu1}_mu2_{tag_mu2}_lspg.npy")
+    rom_filename_galerkin = os.path.join(save_dir, f"U_PROM_tol_{tol:.0e}_mu1_{tag_mu1}_mu2_{tag_mu2}_galerkin.npy")
+
+    # Load solutions
     U_FOM = np.load(fom_filename)
-    U_ROM_lspg = np.load(os.path.join(save_dir, f"U_PROM_tol_{tol:.0e}_lspg.npy"))
-    U_ROM_galerkin = np.load(os.path.join(save_dir, f"U_PROM_tol_{tol:.0e}_galerkin.npy"))
+    U_ROM_lspg = np.load(rom_filename_lspg)
+    U_ROM_galerkin = np.load(rom_filename_galerkin)
     num_modes = get_num_modes(tol)
 
+    # Main plot
     fig, ax = plt.subplots(figsize=(7, 6))
+    ax.plot(X, U_FOM[:, time_idx], 'k-', linewidth=3, label='FOM')
+    ax.plot(X, U_ROM_lspg[:, time_idx], 'b-', linewidth=2, label='LSPG PROM', alpha=0.8)
+    ax.plot(X, U_ROM_galerkin[:, time_idx], 'r-', linewidth=2, label='Galerkin PROM', alpha=0.8)
 
-    ax.plot(X, U_FOM[:, time_idx], color='black', linestyle='-', linewidth=2, label='FOM')
-    ax.plot(X, U_ROM_lspg[:, time_idx], color='blue', linestyle='-', linewidth=2, label='LSPG PROM')
-    ax.plot(X, U_ROM_galerkin[:, time_idx], color='red', linestyle='-', linewidth=2, label='Galerkin PROM')
-
-    ax.set_title(f'FOM vs PROM at $t=5$ s\nPOD-Based PROM ($\\epsilon^2$={tol:.0e}, $n$={num_modes})')
+    ax.set_title(rf'$\mu_1 = {mu1:.3f}$, $\mu_2 = {mu2:.4f}$, $t = 5$')
     ax.set_xlabel(r'$x$')
-    ax.set_ylabel(r'$u$')
+    ax.set_ylabel(r'$u(x,t)$')
     ax.set_xlim(0, 100)
     ax.set_ylim(0, 7)
     ax.legend(loc='upper right')
     ax.grid(True)
 
-    # Inset + custom connector
+    # Inset zoom plot
     axins = ax.inset_axes([0.3, 0.4, 0.6, 0.4])
-    axins.plot(X, U_FOM[:, time_idx], color='black', linewidth=2)
-    axins.plot(X, U_ROM_lspg[:, time_idx], color='blue', linewidth=2)
-    axins.plot(X, U_ROM_galerkin[:, time_idx], color='red', linewidth=2)
+    axins.plot(X, U_FOM[:, time_idx], 'k-', linewidth=3)
+    axins.plot(X, U_ROM_lspg[:, time_idx], 'b-', linewidth=2, alpha=0.8)
+    axins.plot(X, U_ROM_galerkin[:, time_idx], 'r-', linewidth=2, alpha=0.8)
 
     axins.set_xlim(0, 15)
     axins.set_ylim(4.575, 5)
     axins.grid(True, linestyle='--', linewidth=0.4)
 
-    # Use your custom mark_inset
     my_mark_inset(ax, axins, loc1a=2, loc1b=1, loc2a=3, loc2b=4, fc="none", ec="black")
 
+    # Save figure
+    fig_name = f"fom_pod_comparison_tol_{tol:.0e}_mu1_{tag_mu1}_mu2_{tag_mu2}_modes_{num_modes}.pdf"
     plt.tight_layout()
-    plt.savefig(f"fom_pod_comparison_tol_{tol:.0e}_modes_{num_modes}.pdf", format='pdf')
+    plt.savefig(fig_name, format='pdf')
     plt.show()
 
 # Example usage
-plot_fom_rom_comparison(1e-4)
+plot_fom_rom_comparison(tol=1e-4)
+
 
