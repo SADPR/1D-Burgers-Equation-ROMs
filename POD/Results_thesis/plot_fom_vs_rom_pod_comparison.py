@@ -52,8 +52,8 @@ def plot_fom_rom_comparison(tol, mu1, mu2):
     plt.figure(figsize=(7, 6))
     for idx, t_index in enumerate(time_indices):
         label_fom = 'FOM' if idx == 0 else None
-        label_lspg = 'LSPG ROM' if idx == 0 else None
-        label_galerkin = 'Galerkin ROM' if idx == 0 else None
+        label_lspg = 'LSPG PROM' if idx == 0 else None
+        label_galerkin = 'Galerkin PROM' if idx == 0 else None
 
         plt.plot(X, U_FOM[:, t_index], 'k-', linewidth=3, label=label_fom)
         plt.plot(X, U_ROM_lspg[:, t_index], 'b--', linewidth=2, label=label_lspg, alpha=0.8)
