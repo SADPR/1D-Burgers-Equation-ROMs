@@ -14,7 +14,7 @@ def reconstruct_snapshot_with_local_basis(snapshot, U):
     return U @ (U.T @ snapshot)
 
 # Load the specific snapshot
-snapshot_file = '../training_data/simulation_mu1_4.76_mu2_0.0182.npy'
+snapshot_file = '../fem_training_data/fem_simulation_mu1_4.250_mu2_0.0150.npy'
 snapshot = np.load(snapshot_file)
 
 # Project snapshot onto the global basis to determine the cluster

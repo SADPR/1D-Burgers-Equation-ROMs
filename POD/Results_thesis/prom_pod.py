@@ -32,10 +32,10 @@ if __name__ == "__main__":
     ]
 
     # ROM tolerances
-    tolerances = [1e-2, 1e-3, 1e-4, 1e-5, 1e-6]
+    tolerances = [2e-2]
 
     # Projection types
-    projections = ["Galerkin", "LSPG"]
+    projections = ["LSPG"]
 
     # Create an instance of the FEMBurgers class
     fem_burgers = FEMBurgers(X, T)

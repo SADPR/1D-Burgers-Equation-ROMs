@@ -5,8 +5,8 @@ import os
 from getH_alpha_functions import getQ, getE, getH
 
 # Load the entire snapshot dataset
-data_path = '../FEM/training_data/'
-files = [os.path.join(data_path, f) for f in os.listdir(data_path) if f.endswith('.npy')]
+data_path = '../FEM/fem_training_data/'
+files = [os.path.join(data_path, f) for f in os.listdir(data_path) if f.endswith('fem_simulation_mu1_4.250_mu2_0.0150.npy')]
 all_snapshots = []
 
 for file in files:
@@ -53,7 +53,7 @@ q = U.T @ all_snapshots
 np.save('U_truncated.npy', U)
 
 # Regularization term
-alpha = 1000
+alpha = 10
 
 # Construct matrices Q and E using the provided functions
 Q = getQ(n_final, Ns, q)

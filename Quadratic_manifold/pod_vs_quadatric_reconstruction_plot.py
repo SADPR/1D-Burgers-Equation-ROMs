@@ -23,14 +23,13 @@ def compute_l2_norm_error(U_FOM, U_ROM):
 
 def plot_reconstruction_comparison():
     # Load domain
-    a = 0
-    b = 100
-    m = int(256 * 2)
+    a, b = 0, 100
+    m = 511
     X = np.linspace(a, b, m + 1)
 
     # Time discretization
-    At = 0.07
-    times_of_interest = [7, 14, 21]  # seconds
+    At = 0.05
+    times_of_interest = [5, 10, 15, 20, 25]  # seconds
     time_indices = [int(t / At) for t in times_of_interest]
 
     # Load the precomputed basis and H matrix
@@ -38,7 +37,7 @@ def plot_reconstruction_comparison():
     H = np.load("H_quadratic.npy")
 
     # Load a specific snapshot for reconstruction
-    snapshot_file = '../FEM/training_data/simulation_mu1_4.76_mu2_0.0182.npy'
+    snapshot_file = '../FEM/fem_testing_data/fem_simulation_mu1_4.750_mu2_0.0200.npy'
     snapshot = np.load(snapshot_file)
     num_modes = Phi_p.shape[1]
 

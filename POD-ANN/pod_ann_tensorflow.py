@@ -5,7 +5,7 @@ import os
 import matplotlib.pyplot as plt
 
 # Load snapshot data
-data_path = '../FEM/training_data/'
+data_path = '../FEM/fem_training_data/'
 files = [os.path.join(data_path, f) for f in os.listdir(data_path) if f.endswith('.npy')]
 all_snapshots = []
 
@@ -19,8 +19,8 @@ all_snapshots = np.hstack(all_snapshots)  # Ensure shape is (248000, 513)
 U, S, VT = np.linalg.svd(all_snapshots, full_matrices=False)
 
 # Set the number of modes for principal and secondary modes
-r = 28  # Number of principal modes
-R = 301  # Total number of modes
+r = 17  # Number of principal modes
+R = 96  # Total number of modes
 
 U_p = U[:, :r]
 U_s = U[:, r:R]

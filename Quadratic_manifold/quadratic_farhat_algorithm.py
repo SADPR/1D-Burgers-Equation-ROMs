@@ -196,13 +196,13 @@ from getH_alpha_functions import get_dQ_dq, get_single_Q, get_sym, getE, getH, g
 # Step 1: Load Snapshot Data and Initialize Parameters
 
 # Load the snapshot data
-snapshot_file = '../FEM/training_data/simulation_mu1_4.76_mu2_0.0182.npy'
+snapshot_file = '../FEM/fem_training_data/fem_simulation_mu1_4.250_mu2_0.0150.npy'
 S = np.load(snapshot_file)  # S is the snapshot matrix with dimensions (N, Ns)
 
 # Initialize parameters
 epsilon_s = 1e-4  # Tolerance
 zeta = 0.1  # Correction factor
-omega = 0.01  # Regularization parameter, if not specified, we will determine alpha*
+omega = 0.0  # Regularization parameter, if not specified, we will determine alpha*
 N, Ns = S.shape  # N is the number of spatial points, Ns is the number of snapshots
 
 print(f"Loaded snapshot data with dimensions: {S.shape}")

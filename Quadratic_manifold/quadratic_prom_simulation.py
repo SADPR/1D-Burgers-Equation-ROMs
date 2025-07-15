@@ -1,83 +1,80 @@
 import numpy as np
-import os
-import sys
-from matplotlib.animation import FuncAnimation, PillowWriter
+import os, sys
 import matplotlib.pyplot as plt
-# Get the absolute path of the parent directory
-parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../FEM/'))
-
-# Add the parent directory to sys.path
+from matplotlib.animation import FuncAnimation
+# ------------------------------------------------------------------
+# 1.  Path handling
+# ------------------------------------------------------------------
+parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../FEM"))
 sys.path.append(parent_dir)
 
-# Now you can import the module
-from fem_burgers import FEMBurgers
+from fem_burgers import FEMBurgers          # after path injection
 
-if __name__ == "__main__":
-    # Domain
-    a = 0
-    b = 100
+# ------------------------------------------------------------------
+# 2.  Mesh and PDE parameters  (unchanged)
+# ------------------------------------------------------------------
+a, b = 0, 100
+m = 511
+X = np.linspace(a, b, m + 1)
+T = np.array([np.arange(1, m + 1), np.arange(2, m + 2)]).T
 
-    # Mesh
-    m = int(256 * 2)
-    h = (b - a) / m
-    X = np.linspace(a, b, m + 1)
-    T = np.array([np.arange(1, m + 1), np.arange(2, m + 2)]).T
+u0  = np.ones_like(X)
+uxa = 5.190
 
-    # Initial condition
-    u0 = np.ones_like(X)
+Tf, At = 25.0, 0.05
+nTimeSteps = int(Tf / At)
+E   = 0.0
+mu2 = 0.0260
 
-    # Boundary conditions
-    uxa = 4.76  # u(0,t) = 4.3
+# ------------------------------------------------------------------
+# 3.  Load Φ and H produced by build_manifold.py
+# ------------------------------------------------------------------
+Phi = np.load("Phi.npy")            # (N,n)
+H   = np.load("H.npy")              # (N,k)
 
-    # Time discretization and numerical diffusion
-    Tf = 3
-    At = 0.07
-    nTimeSteps = int(Tf / At)
-    E = 0.01
+n_modes = Phi.shape[1]              # n     (for log / filename only)
 
-    # Parameter mu2
-    mu2 = 0.0182
+# optional consistency check
+assert H.shape[1] == n_modes*(n_modes+1)//2, "Φ and H dimensions mismatch"
 
-    # Number of modes to use (for quadratic manifold)
-    num_modes = 28
+# ------------------------------------------------------------------
+# 4.  Instantiate FEM model
+# ------------------------------------------------------------------
+fem = FEMBurgers(X, T)
 
-    Phi_p = np.load("U_truncated.npy")
-    H = np.load("H_quadratic.npy")
+# ------------------------------------------------------------------
+# 5.  Run quadratic PROM
+# ------------------------------------------------------------------
+print(f"Running quadratic PROM (LSPG) with n = {n_modes} modes")
+U_PROM = fem.pod_quadratic_manifold(
+    At, nTimeSteps,
+    u0, uxa,
+    E, mu2,
+    Phi, H,
+    projection="LSPG"
+)
 
-    # Create an instance of the FEMBurgers class
-    fem_burgers = FEMBurgers(X, T)
+# ------------------------------------------------------------------
+# 6.  Save & visualise
+# ------------------------------------------------------------------
+os.makedirs("quadratic_rom_solutions", exist_ok=True)
+np.save(f"quadratic_rom_solutions/quadratic_PROM_U_PROM_{n_modes}_modes_mu1_{uxa:.3f}_mu2_{mu2:.4f}.npy", U_PROM)
+print("Simulation complete – results saved.")
 
-    # Directory to save results
-    save_dir = "quadratic_rom_solutions"
-    if not os.path.exists(save_dir):
-        os.makedirs(save_dir)
+U = U_PROM
+fig, ax = plt.subplots()
+line, = ax.plot(X, U[:, 0], label='Solution over time')
+ax.set_xlim(a, b)
+ax.set_ylim(0, 6)
+ax.set_xlabel('x')
+ax.set_ylabel('u')
+ax.legend()
 
-    print(f'Running Quadratic PROM method (LSPG) with {num_modes} modes...')
-    
-    # Compute the Quadratic PROM solution
-    U_PROM = fem_burgers.pod_quadratic_manifold(At, nTimeSteps, u0, uxa, E, mu2, Phi_p, H, num_modes, projection="Galerkin")
+def update(frame):
+    line.set_ydata(U[:, frame])
+    ax.set_title(f't = {frame * At:.2f}')
+    return line,
 
-    # Save the solution
-    np.save(os.path.join(save_dir, f"U_PROM_quadratic_{num_modes}_modes.npy"), U_PROM)
+ani = FuncAnimation(fig, update, frames=nTimeSteps + 1, blit=True)
 
-    print("Quadratic PROM simulation completed and saved.")
-
-    # Create a figure and axis
-    fig, ax = plt.subplots(figsize=(10, 6))
-    line, = ax.plot(X, U_PROM[:, 0], color='b')
-    ax.set_xlim(X[0], X[-1])
-    ax.set_ylim(np.min(U_PROM), np.max(U_PROM))
-    ax.set_xlabel('x')
-    ax.set_ylabel('u')
-    ax.set_title('Solution at t = 0.00')
-
-    # Function to update the plot at each time step
-    def update(frame):
-        line.set_ydata(U_PROM[:, frame])
-        ax.set_title(f'Solution at t = {frame * At:.2f}')
-        return line,
-
-    # Create animation
-    ani = FuncAnimation(fig, update, frames=nTimeSteps, blit=True)
-    plt.show()
-
+plt.show()

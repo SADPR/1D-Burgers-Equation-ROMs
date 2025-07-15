@@ -44,7 +44,7 @@ def count_modes_in_clusters(cluster_bases_dir, n_clusters_list):
 cluster_bases_dir = '.'  # Modify this path if needed
 
 # Define the list of cluster configurations you tested
-n_clusters_list = [1, 2, 4, 6, 8, 10, 15, 20, 25, 30, 35, 40, 45, 50, 100]
+n_clusters_list = [1, 2, 4, 6, 8, 10, 15, 20, 25, 30, 35, 40, 45, 50]
 
 # Count and get the average number of modes for each clustering
 average_modes_list, all_cluster_modes = count_modes_in_clusters(cluster_bases_dir, n_clusters_list)
@@ -59,7 +59,7 @@ for i, cluster_modes in enumerate(all_cluster_modes):
         plt.vlines(x=n_clusters_list[i], ymin=min(cluster_modes), ymax=max(cluster_modes), color='r', alpha=0.5, label='Mode Range' if i == 0 else "")  # Add label only once
 
 # Define y-axis ticks with more granularity from 0 to 50
-yticks = list(range(0, 60, 10)) + list(range(100, 350, 50))
+yticks = list(range(0, 170, 10))# + list(range(100, 350, 50))
 plt.yticks(yticks)  # Set y-axis ticks to include 0,10,20,30,40,50,100,150,200,250,300
 
 plt.grid(True, which='both', axis='y', linestyle='--', alpha=0.7)  # Grid lines for y-axis

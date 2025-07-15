@@ -16,11 +16,8 @@ from fem_burgers import FEMBurgers
 
 def main(n_clusters):
     # Domain
-    a = 0
-    b = 100
-
-    # Mesh
-    m = int(256 * 2)
+    a, b = 0, 100
+    m = 511
     h = (b - a) / m
     X = np.linspace(a, b, m + 1)
     T = np.array([np.arange(1, m + 1), np.arange(2, m + 2)]).T
@@ -32,16 +29,16 @@ def main(n_clusters):
     umin = np.min(u0) - 0.1
 
     # Boundary conditions
-    uxa = 4.76  # u(0,t) = 4.76
+    uxa = 4.56  # u(0,t) = 4.76
 
     # Time discretization and numerical diffusion
-    Tf = 35
-    At = 0.07
+    Tf = 25
+    At = 0.05
     nTimeSteps = int(Tf / At)
-    E = 0.01
+    E = 0.00
 
     # Parameter mu2
-    mu2 = 0.0182
+    mu2 = 0.0190
 
     # Create an instance of the FEMBurgers class
     fem_burgers = FEMBurgers(X, T)
@@ -51,17 +48,17 @@ def main(n_clusters):
     local_bases_filename = f'clusters/local_bases_overlap_{n_clusters}_clusters.npy'
     kmeans = joblib.load(kmeans_filename)
     local_bases = np.load(local_bases_filename, allow_pickle=True).item()
-    U_global = np.load('clusters/U_global.npy')
+    U_global = np.load('clusters/U_global_modes_tol_1e-05.npy')
+    # U_global = np.load('clusters/U_modes_tol_0e+00.npy')
 
     # Number of global modes to use for clustering
-    num_global_modes = 301  # Adjust based on your data
+    num_global_modes = 160#96  # Adjust based on your data
 
     # Solution using Local PROM
     print('Local PROM method (Picard)...')
     projection="LSPG"
     U_PROM = fem_burgers.local_prom_burgers(At, nTimeSteps, u0, uxa, E, mu2, kmeans, local_bases, U_global, num_global_modes, projection=projection)
-
-    np.save(f"local_PROM_{n_clusters}_clusters_{projection}.npy", U_PROM)
+    np.save(f"local_PROM_{n_clusters}_clusters_{projection}_mu1_{uxa:.3f}_mu2_{mu2:.4f}.npy", U_PROM)
 
     # Postprocess
     npasplot = round(nTimeSteps / 10)
@@ -81,12 +78,12 @@ def main(n_clusters):
         ax.set_title(f't = {frame * At:.2f}')
         return line,
 
-    # ani = FuncAnimation(fig, update, frames=nTimeSteps + 1, blit=True)
+    ani = FuncAnimation(fig, update, frames=nTimeSteps + 1, blit=True)
 
-    # # Save animation as GIF
-    # ani.save(f"local_burgers_equation_prom_{n_clusters}_clusters.gif", writer=PillowWriter(fps=10))
+    # Save animation as GIF
+    ani.save(f"local_burgers_equation_prom_{n_clusters}_clusters.gif", writer=PillowWriter(fps=10))
 
-    # plt.show()
+    plt.show()
 
 if __name__ == "__main__":
     # Set the number of clusters here

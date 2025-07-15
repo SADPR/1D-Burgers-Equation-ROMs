@@ -3,27 +3,16 @@ import os
 from sklearn.cluster import KMeans
 import joblib
 
-def get_number_of_singular_values_for_given_tolerance(M, N, s, epsilon):
-    """
-    Compute the number of singular values (modes) to retain based on the given tolerance.
-    """
-    dimMATRIX = max(M, N)
-    tol = dimMATRIX * np.finfo(float).eps * max(s) / 2
-    R = np.sum(s > tol)  # Definition of numerical rank
-    if epsilon == 0:
-        K = R
-    else:
-        SingVsq = np.multiply(s, s)
-        SingVsq.sort()
-        normEf2 = np.sqrt(np.cumsum(SingVsq))
-        epsilon = epsilon * normEf2[-1]  # relative tolerance
-        T = sum(normEf2 < epsilon)
-        K = len(s) - T
-    K = min(R, K)
+def get_number_of_singular_values_for_given_tolerance(M, N, s, epsilon_squared):
+    s_sorted = np.sort(s)[::-1]
+    squared_cumsum = np.cumsum(s_sorted ** 2)
+    squared_total = squared_cumsum[-1]
+    squared_relative_loss = 1.0 - (squared_cumsum / squared_total)
+    K = np.argmax(squared_relative_loss <= epsilon_squared) + 1
     return K
 
 # Load snapshot data
-data_path = '../FEM/training_data/'
+data_path = '../FEM/fem_training_data/'
 files = [os.path.join(data_path, f) for f in os.listdir(data_path) if f.endswith('.npy')]
 all_snapshots = []
 
@@ -31,13 +20,13 @@ for file in files:
     snapshots = np.load(file)
     all_snapshots.append(snapshots)
 
-all_snapshots = np.hstack(all_snapshots)  # Ensure shape is (248000, 513)
+all_snapshots = np.hstack(all_snapshots)  
 
 # Perform global SVD to obtain a reduced representation
 U_global, S_global, VT_global = np.linalg.svd(all_snapshots, full_matrices=False)
 
 # Choose a tolerance level (e.g., 1e-4) and compute the number of global modes to retain
-tolerance = 1e-4
+tolerance = 1e-5
 M_global, N_global = U_global.shape
 num_global_modes = get_number_of_singular_values_for_given_tolerance(M_global, N_global, S_global, tolerance)
 q_global = (U_global[:, :num_global_modes]).T @ all_snapshots
@@ -53,7 +42,7 @@ np.save(global_modes_filename, U_global[:, :num_global_modes])
 print(f"Global modes U_global saved to {global_modes_filename}")
 
 # Test different numbers of clusters
-n_clusters_list = [20]  # Example values; can be adjusted
+n_clusters_list = [1, 2, 4, 6, 8, 10, 15, 20, 25, 30, 35, 40, 45, 50]  # Example values; can be adjusted
 best_n_clusters = None
 best_error = float('inf')
 

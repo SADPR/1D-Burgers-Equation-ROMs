@@ -9,7 +9,7 @@ from matplotlib.animation import FuncAnimation, PillowWriter
 from torch.optim.lr_scheduler import CyclicLR
 
 # Load snapshot data
-data_path = '../FEM/training_data/'
+data_path = '../FEM/fem_training_data/'
 files = [os.path.join(data_path, f) for f in os.listdir(data_path) if f.endswith('.npy')]
 all_snapshots = []
 
@@ -23,8 +23,8 @@ all_snapshots = np.hstack(all_snapshots)  # Ensure shape is (248000, 513)
 U, S, VT = np.linalg.svd(all_snapshots, full_matrices=False)
 
 # Set the number of modes for principal and secondary modes
-r = 28  # Number of principal modes
-R = 301  # Total number of modes
+r = 5  # Number of principal modes
+R = 96  # Total number of modes
 
 U_p = U[:, :r]
 U_s = U[:, r:R]
@@ -74,14 +74,14 @@ q_p_tensor = torch.tensor(q_p.T, dtype=torch.float32)  # Transpose to (n_samples
 q_s_tensor = torch.tensor(q_s.T, dtype=torch.float32)  # Transpose to (n_samples, R-r)
 
 # Split data into training and testing sets
-q_p_train, q_p_test, q_s_train, q_s_test = train_test_split(q_p_tensor, q_s_tensor, test_size=0.2, random_state=42)
+q_p_train, q_p_test, q_s_train, q_s_test = train_test_split(q_p_tensor, q_s_tensor, test_size=0.1, random_state=42)
 
 # Create data loaders
 train_dataset = torch.utils.data.TensorDataset(q_p_train, q_s_train)
 test_dataset = torch.utils.data.TensorDataset(q_p_test, q_s_test)
 
-train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=64, shuffle=True)
-test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=64, shuffle=False)
+train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=32, shuffle=True)
+test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=32, shuffle=False)
 
 # Initialize the model, loss function, and optimizer
 input_dim = r
@@ -126,7 +126,7 @@ def train_ANN(model, train_loader, test_loader, criterion, optimizer, scheduler,
 
 
 # Train the model
-train_ANN(model, train_loader, test_loader, criterion, optimizer, scheduler, num_epochs=100)
+train_ANN(model, train_loader, test_loader, criterion, optimizer, scheduler, num_epochs=200)
 
 # Save the complete model
 torch.save(model, 'pod_ann_model.pth')

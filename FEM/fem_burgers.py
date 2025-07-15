@@ -20,62 +20,44 @@ def get_sym(qi):
 
     return np.array(vec)
 
-def get_single_Q(modes, q):
-    ''' Populates Q row by row '''
-    k = int(modes*(modes+1)/2)
-    Q = np.empty(k)
-
-    Q = get_sym(q)
-
-    return Q
-
-def get_dQ_dq(modes, q):
+def get_single_Q(n: int, q: np.ndarray) -> np.ndarray:
     """
-    Compute the derivative of the quadratic terms with respect to the reduced coordinates q_p.
-    This will give a matrix where each row corresponds to the derivative of a specific quadratic term
-    with respect to the components of q_p.
+    Return the unique quadratic monomials of a single vector  q ∈ ℝⁿ.
 
-    Parameters:
-    - modes: int, number of modes (size of q_p).
-    - q: np.array, the vector q_p of reduced coordinates.
+    Parameters
+    ----------
+    n : int          # expected length of q (sanity check)
+    q : (n,) array
 
-    Returns:
-    - dQ_dq: np.array, the derivative of the quadratic terms with respect to q_p.
+    Returns
+    -------
+    Qq : (k,) array  with k = n(n+1)/2
     """
-    k = int(modes * (modes + 1) / 2)
-    dQ_dq = np.zeros((k, modes))
+    assert q.size == n, "q length mismatch"
+    return get_sym(q)
 
-    index = 0
-    for i in range(modes):
-        for j in range(i, modes):
-            if i == j:
-                dQ_dq[index, i] = 2 * q[i]  # Derivative of q_i^2 w.r.t q_i
-            else:
-                dQ_dq[index, i] = q[j]  # Derivative of q_i * q_j w.r.t q_i
-                dQ_dq[index, j] = q[i]  # Derivative of q_i * q_j w.r.t q_j
-            index += 1
 
-    return dQ_dq
-
-def compute_derivative(U_p, H, q_p):
+def get_dQ_dq(n: int, q: np.ndarray) -> np.ndarray:
     """
-    Compute the derivative of the quadratic manifold approximation with respect to q_p.
+    Derivative  d(get_single_Q)/dq  ∈ ℝ^{k×n}   (k = n(n+1)/2)
 
-    Parameters:
-    - U_p: np.array, the linear basis matrix (Phi_p).
-    - H: np.array, the matrix H capturing the effect of secondary modes.
-    - q_p: np.array, the vector of reduced coordinates in the primary space.
-
-    Returns:
-    - derivative: np.array, the derivative of the quadratic manifold approximation.
+    Row ordering matches get_sym:
+        [ q1²,  q1 q2,  q1 q3, …, q2²,  q2 q3, …, qn² ]
     """
-    modes = len(q_p)
-    dQ_dq = get_dQ_dq(modes, q_p)
+    k = n * (n + 1) // 2
+    dQ = np.zeros((k, n), dtype=q.dtype)
 
-    # The derivative of the quadratic manifold approximation
-    derivative = U_p + H @ dQ_dq
-
-    return derivative
+    row = 0
+    for i in range(n):
+        # diagonal term  q_i²
+        dQ[row, i] = 2.0 * q[i]
+        row += 1
+        # off-diagonal terms  q_i q_j  (j>i)
+        for j in range(i + 1, n):
+            dQ[row, i] = q[j]
+            dQ[row, j] = q[i]
+            row += 1
+    return dQ
 
 class FEMBurgers:
     def __init__(self, X, T):
@@ -813,7 +795,7 @@ class FEMBurgers:
 
     from scipy.sparse import lil_matrix
 
-    def local_prom_burgers(self, At, nTimeSteps, u0, uxa, E, mu2, kmeans, local_bases, U_global, num_global_modes, projection="Galerkin"):
+    def local_prom_burgers_(self, At, nTimeSteps, u0, uxa, E, mu2, kmeans, local_bases, U_global, num_global_modes, projection="Galerkin"):
         m = len(self.X) - 1
 
         # Allocate memory for the solution matrix
@@ -897,8 +879,21 @@ class FEMBurgers:
             U[:, n + 1] = U1
 
         return U
+    
+    def local_prom_burgers(
+        self,
+        At,
+        nTimeSteps,
+        u0,
+        mu1,                 # ← BC parameter renamed (was `uxa`)
+        E,
+        mu2,
+        kmeans,
+        local_bases,
+        U_global,
+        num_global_modes,
+        projection="Galerkin"):
 
-    def pod_quadratic_manifold(self, At, nTimeSteps, u0, uxa, E, mu2, Phi_p, H, num_modes, projection="LSPG"):
         m = len(self.X) - 1
 
         # Allocate memory for the solution matrix
@@ -910,10 +905,19 @@ class FEMBurgers:
         M = self.compute_mass_matrix()
         K = self.compute_diffusion_matrix()
 
+        Ug_short = U_global[:, :num_global_modes]  # for cluster assignment
+
         for n in range(nTimeSteps):
             print(f"Time Step: {n}. Time: {n * At}")
             U0 = U[:, n]
-            error_U = 1
+
+            # ---------- 1. choose ONE local basis for this time step ----------
+            q_global_snapshot = Ug_short.T @ U0
+            cluster_id = kmeans.predict(q_global_snapshot.reshape(1, -1))[0]
+            Phi = local_bases[cluster_id]
+            # -----------------------------------------------------------------
+
+            error_U = 1.0
             k = 0
             while (error_U > 1e-6) and (k < 20):
                 print(f"Iteration: {k}, Error: {error_U}")
@@ -921,52 +925,55 @@ class FEMBurgers:
                 # Compute convection matrix using the current solution guess
                 C = self.compute_convection_matrix(U0)
 
+                # SUPG term (added) -------------------------------------------
+                S = self.compute_supg_term(U0, mu2)
+                # --------------------------------------------------------------
+
                 # Compute forcing vector
                 F = self.compute_forcing_vector(mu2)
 
-                # Form the system matrix A (Jacobian J) and right-hand side vector b
+                # Form the system matrix A
                 A = M + At * C + At * E * K
-                b = M @ U[:, n] + At * F
 
-                # Modify A and b for boundary conditions
-                A[0, :] = 0
-                A[0, 0] = 1
-                b[0] = uxa
+                # Modify A for boundary conditions
+                A = A.tolil()
+                A[0, :] = 0.0
+                A[0, 0] = 1.0
+                A = A.tocsc()
 
-                # Compute the residual R
+                # Right-hand side vector b (includes SUPG) --------------------
+                b = M @ U[:, n] + At * F - At * S
+                # --------------------------------------------------------------
+
+                # Boundary condition
+                b[0] = mu1
+
+                # Residual
                 R = A @ U0 - b
 
-                # Compute q_p (linear reduced coordinates)
-                q_p = Phi_p.T @ U0
-
-                # Compute the derivative of the quadratic manifold approximation
-                dD_u_dq = compute_derivative(Phi_p, H, q_p)
-
                 if projection == "Galerkin":
-                    # Galerkin projection
-                    Ar = dD_u_dq.T @ A @ dD_u_dq
-                    br = dD_u_dq.T @ (A @ U0 - b)
+                    Ar = Phi.T @ A @ Phi
+                    br = Phi.T @ R
                 elif projection == "LSPG":
-                    # LSPG projection
-                    J_dD_u_dq = A @ dD_u_dq
-                    Ar = J_dD_u_dq.T @ J_dD_u_dq
-                    br = J_dD_u_dq.T @ R
+                    J_Phi = A @ Phi
+                    Ar = J_Phi.T @ J_Phi
+                    br = J_Phi.T @ R
                 else:
                     raise ValueError(f"Projection method '{projection}' is not available. Please use 'Galerkin' or 'LSPG'.")
 
-                # Solve the reduced-order system for the correction δq_p
-                delta_qp = np.linalg.solve(Ar, -br)
+                # Solve the reduced-order system for the correction δq
+                delta_q = np.linalg.solve(Ar, -br)
 
-                # Update the reduced coordinates q_p
-                q_p += delta_qp
+                # Update the reduced coordinates q
+                q = Phi.T @ U0 + delta_q
 
                 # Compute the updated solution in the full-order space
-                U1 = Phi_p @ q_p + H @ get_single_Q(num_modes, q_p)
+                U1 = Phi @ q
 
-                # Compute the error to check for convergence
-                error_U = np.linalg.norm(delta_qp) / np.linalg.norm(q_p)
+                # Convergence check
+                error_U = np.linalg.norm(delta_q) / np.linalg.norm(q)
 
-                # Update the guess for the next iteration
+                # Prepare next iteration
                 U0 = U1
                 k += 1
 
@@ -975,10 +982,104 @@ class FEMBurgers:
 
         return U
 
-    def pod_ann_prom(self, At, nTimeSteps, u0, uxa, E, mu2, U_p, U_s, model, projection="LSPG"):
+    def pod_quadratic_manifold(
+            self,
+            At: float,
+            nTimeSteps: int,
+            u0: np.ndarray,
+            uxa: float,                # left Dirichlet BC  u(0,t)=uxa
+            E: float,                  # numerical diffusion coefficient
+            mu2: float,                # source-term parameter
+            Phi: np.ndarray,           # (N,n)   linear POD basis   (Φ)
+            H:   np.ndarray,           # (N,k)   quadratic tensor   (H)
+            projection: str = "LSPG",
+            newton_tol: float = 1e-6,
+            newton_itmax: int = 25):
+        """
+        Quadratic-manifold PROM (Galerkin or LSPG).
 
-        original_data = np.load(f"../FEM/training_data/simulation_mu1_{uxa:.2f}_mu2_{mu2:.4f}.npy")
-        reconstruction = U_p@(U_p.T@original_data)
+        Returns
+        -------
+        U : (N, nTimeSteps+1)  full-order DOF history reconstructed from the ROM.
+        """
+        N, n = Phi.shape
+        k     = H.shape[1]
+        Xpts  = len(self.X) - 1
+
+        # storage ----------------------------------------------------
+        U = np.zeros((Xpts + 1, nTimeSteps + 1))
+        U[:, 0] = u0.copy()
+
+        # global FEM matrices ---------------------------------------
+        M = self.compute_mass_matrix()      # (N,N)
+        K = self.compute_diffusion_matrix()
+
+        # ----------------------------------------------------------- #
+        # helper lambdas
+        # ----------------------------------------------------------- #
+        def decoder(q):
+            """Φ q + H q⊗q  (unique)"""
+            return Phi @ q + H @ get_single_Q(n, q)
+
+        def tangent(q):
+            """∂ũ/∂q  = Φ + H dQdq"""
+            dQdq = get_dQ_dq(n, q)                  # (k,n)
+            return Phi + H @ dQdq                   # (N,n)
+
+        # ----------------------------------------------------------- #
+        for m in range(nTimeSteps):
+            print(f"\n=== time step {m+1}/{nTimeSteps}  (t = {(m+1)*At:.2f}) ===")
+            # initial Newton guess  –  linear POD projection
+            q   = Phi.T @ U[:, m]
+            u   = decoder(q)
+
+            for it in range(newton_itmax):
+                # PDE operators at current solution ------------------
+                C = self.compute_convection_matrix(u)
+                F = self.compute_forcing_vector(mu2)
+                A = M + At*C + At*E*K             # Jacobian w.r.t. state
+
+                # Dirichlet BC at node 0
+                A[0, :] = 0.0
+                A[0, 0] = 1.0
+                b = M @ U[:, m] + At*F
+                b[0] = uxa
+
+                # residual in full space
+                R = A @ u - b
+
+                # tangent basis & reduced system --------------------
+                T = tangent(q)                    # (N,n)
+
+                if projection.lower() == "galerkin":
+                    Ar = T.T @ A @ T
+                    br = T.T @ R
+                elif projection.lower() == "lspg":
+                    JT = A @ T                    # (N,n)
+                    Ar = JT.T @ JT
+                    br = JT.T @ R
+                else:
+                    raise ValueError("projection must be 'Galerkin' or 'LSPG'")
+
+                # Gauss–Newton update -------------------------------
+                delta_q = np.linalg.solve(Ar, -br)
+                q      += delta_q
+                u       = decoder(q)
+
+                rel = np.linalg.norm(delta_q) / max(1e-14, np.linalg.norm(q))
+                print(f"  Newton {it:2d}:  |δq|/|q| = {rel:.3e}")
+
+                if rel < newton_tol:
+                    break
+            else:
+                print("  Warning: Newton did not converge")
+
+            U[:, m+1] = u
+
+        return U
+
+    def pod_ann_prom_(self, At, nTimeSteps, u0, uxa, E, mu2, U_p, U_s, model, projection="LSPG"):
+
         m = len(self.X) - 1
 
         # Allocate memory for the solution matrix
@@ -1064,6 +1165,81 @@ class FEMBurgers:
 
         return U
 
+    def pod_ann_prom(self, At, nTimeSteps, u0, mu1, E, mu2,
+                    U_p, U_s, model, projection="LSPG"):
+        """
+        Online solver for the POD-ANN PROM (Galerkin or LSPG).
+        """
+        N  = len(self.X) - 1          # total DOFs minus duplicate node
+        n  = U_p.shape[1]             # retained modes
+        nbar = U_s.shape[1]           # discarded modes
+
+        # --- storage -----------------------------------------------------------
+        U = np.zeros((N + 1, nTimeSteps + 1))
+        U[:, 0] = u0
+
+        M = self.compute_mass_matrix()
+        K = self.compute_diffusion_matrix()
+
+        # ----------------------------------------------------------------------
+        for nt in range(nTimeSteps):
+            print(f"Time step {nt}  (t = {nt*At: .4e})")
+            U0  = U[:, nt].copy()
+            q_p = U_p.T @ U0           # initial reduced coordinates
+
+            err, it = 1.0, 0
+            while err > 1e-6 and it < 50:
+
+                # element-level operators for current state
+                C = self.compute_convection_matrix(U0)
+                S = self.compute_supg_term(U0, mu2)
+                F = self.compute_forcing_vector(mu2)
+
+                # full system matrix and RHS
+                A = M + At*C + At*E*K
+                A = A.tolil()
+                A[0, :] = 0.0
+                A[0, 0] = 1.0
+
+                b = M @ U[:, nt] + At*F - At*S
+                b[0] = mu1
+
+                R = A @ U0 - b                       # full residual
+
+                # --- ANN Jacobian wrt q_p --------------------------------------
+                q_p_torch = torch.tensor(q_p, dtype=torch.float32).unsqueeze(0)
+                dN_dq = self.compute_ann_jacobian(model, q_p_torch)  # (nbar × n)
+                dN_dq = dN_dq.numpy()
+
+                # decoder derivative  ∂D/∂q  (N×n)
+                dD_dq = U_p + U_s @ dN_dq
+
+                # --- reduced Newton solve --------------------------------------
+                if projection.lower() == "galerkin":
+                    Ar = dD_dq.T @ A @ dD_dq
+                    br = dD_dq.T @ R
+                elif projection.lower() == "lspg":
+                    JdD = A @ dD_dq
+                    Ar  = JdD.T @ JdD
+                    br  = JdD.T @ R
+                else:
+                    raise ValueError("projection must be 'Galerkin' or 'LSPG'")
+
+                delta_q = np.linalg.solve(Ar, -br)
+                q_p    += delta_q
+
+                # reconstruct full state
+                q_s = model(torch.tensor(q_p, dtype=torch.float32)).detach().numpy()
+                U1  = U_p @ q_p + U_s @ q_s
+
+                err = np.linalg.norm(delta_q) / (np.linalg.norm(q_p) + 1e-14)
+                print(f"   Newton {it:2d}:  rel Δq = {err:.3e}")
+                U0 = U1
+                it += 1
+
+            U[:, nt+1] = U1
+
+        return U
 
 
     def compute_ann_jacobian(self, model, q):

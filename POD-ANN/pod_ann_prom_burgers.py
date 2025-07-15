@@ -37,12 +37,9 @@ class POD_ANN(nn.Module):
         return x
 
 if __name__ == "__main__":
-    # Domain
-    a = 0
-    b = 100
-
-    # Mesh
-    m = int(256 * 2)
+    # Domain and mesh
+    a, b = 0, 100
+    m = 511
     h = (b - a) / m
     X = np.linspace(a, b, m + 1)
     T = np.array([np.arange(1, m + 1), np.arange(2, m + 2)]).T
@@ -54,16 +51,16 @@ if __name__ == "__main__":
     umin = np.min(u0) - 0.1
 
     # Boundary conditions
-    uxa = 4.76  # u(0,t) = 4.76
+    uxa = 4.560  # u(0,t) = 4.76
 
     # Time discretization and numerical diffusion
-    Tf = 35.0
-    At = 0.07
+    Tf = 25.0
+    At = 0.05
     nTimeSteps = int(Tf / At) + 1
-    E = 0.01
+    E = 0.00
 
     # Parameter mu2
-    mu2 = 0.0182
+    mu2 = 0.0190
 
     # Create an instance of the FEMBurgers class
     fem_burgers = FEMBurgers(X, T)
@@ -86,9 +83,23 @@ if __name__ == "__main__":
     end = time.time()
     print(f"Time taken: {end-start}")
 
-    # Save the solution as a .npy file
-    np.save("U_POD_ANN_PROM_solution.npy", U_POD_ANN_PROM)
-    print("Solution saved to U_POD_ANN_PROM_solution.npy")
+    # ------------------------------------------------------------------
+    # Save solution with a descriptive name (create folder if necessary)
+    # ------------------------------------------------------------------
+    out_dir = "pod_ann_prom_solutions"
+    os.makedirs(out_dir, exist_ok=True)
+
+    n_ret = U_p.shape[1]         # retained modes  (n)
+    n_dis = U_s.shape[1]         # discarded modes (n̄)
+
+    fname = (
+        f"POD_ANN_PROM_U_n{n_ret}_nb{n_dis}"
+        f"_mu1_{uxa:.3f}_mu2_{mu2:.4f}.npy"
+    )
+    np.save(os.path.join(out_dir, fname), U_POD_ANN_PROM)
+
+    print(f"Solution saved to {os.path.join(out_dir, fname)}")
+
 
     # # Visualization and animation
     # fig, ax = plt.subplots()

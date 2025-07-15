@@ -41,7 +41,7 @@ def plot_singular_values(s, SnapshotsMatrix, tolerances_squared=None):
     plt.legend()
     plt.tight_layout()
     os.makedirs("modes", exist_ok=True)
-    plt.savefig("modes/singular_value_decay_linear_loss.pdf", format='pdf')
+    # plt.savefig("modes/singular_value_decay_linear_loss.pdf", format='pdf')
     plt.close()
 
 
@@ -62,7 +62,7 @@ def plot_modes(U, num_modes=6):
     plt.suptitle(r'First 6 POD Modes', fontsize=16)
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
     plt.subplots_adjust(top=0.9)
-    plt.savefig("modes/first_6_modes.pdf", format='pdf')
+    # plt.savefig("modes/first_6_modes.pdf", format='pdf')
     plt.close()
 
 def save_modes(U, s, tolerances_squared, snapshots):
@@ -73,6 +73,7 @@ def save_modes(U, s, tolerances_squared, snapshots):
     for eps2, num_modes in zip(tolerances_squared, singular_values_taken):
         U_modes = U[:, :num_modes]
         np.save(f"modes/U_modes_tol_{eps2:.0e}.npy", U_modes)
+        np.save(f"modes/Singular_values_modes_tol_{eps2:.0e}.npy", s[:num_modes])
         print(f'Saved modes for tolerance epsilon^2 = {eps2:.0e} to U_modes_tol_{eps2:.0e}.npy')
 
 if __name__ == '__main__':
@@ -82,7 +83,7 @@ if __name__ == '__main__':
 
     U, s, _ = np.linalg.svd(all_snapshots, full_matrices=False)
 
-    eps2_tols = [1e-2, 1e-3, 1e-4, 1e-5, 1e-6]  
+    eps2_tols = [2e-2]#[1e-2, 1e-3, 1e-4, 1e-5, 1e-6]  
 
     plot_singular_values(s, all_snapshots, eps2_tols)
     plot_modes(U, num_modes=6)

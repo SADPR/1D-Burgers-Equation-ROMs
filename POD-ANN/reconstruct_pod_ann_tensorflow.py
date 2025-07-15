@@ -29,7 +29,7 @@ def create_combined_gif(X, original_snapshot, ann_reconstructed, nTimeSteps, At,
     ax.set_ylim(0, 8)
 
     line_original, = ax.plot(X, original_snapshot[:, 0], 'b-', label='Original Snapshot')
-    line_ann, = ax.plot(X, ann_reconstructed[:, 0], 'g--', label=f'POD-ANN Reconstructed (inf modes={latent_dim}, sup modes={301})')
+    line_ann, = ax.plot(X, ann_reconstructed[:, 0], 'g--', label=f'POD-ANN Reconstructed (inf modes={latent_dim}, sup modes={79})')
 
     ax.set_title('Snapshot Comparison')
     ax.set_xlabel('x')
@@ -82,13 +82,13 @@ if __name__ == '__main__':
     pod_ann_model.trainable = False
 
     # Load the POD basis matrices
-    r = 28
+    r = 17
     U_p = np.load('U_p.npy')
     U_s = np.load('U_s.npy')
     U = np.hstack((U_p, U_s))
 
     # Load a snapshot from the training_data directory
-    snapshot_file = '../FEM/training_data/simulation_mu1_4.76_mu2_0.0182.npy'
+    snapshot_file = '../FEM/fem_training_data/fem_simulation_mu1_4.250_mu2_0.0150.npy'
     snapshot = np.load(snapshot_file)
 
     # Reconstruct the snapshot using POD-ANN
@@ -99,15 +99,16 @@ if __name__ == '__main__':
     # Save the reconstructed snapshots
     np.save("pod_ann_reconstruction.npy", pod_ann_reconstructed)
 
-    # Domain
-    a = 0
-    b = 100
-    m = int(256 * 2)
+    # Domain and mesh
+    a, b = 0, 100
+    m = 511
+    h = (b - a) / m
     X = np.linspace(a, b, m + 1)
+    T = np.array([np.arange(1, m + 1), np.arange(2, m + 2)]).T
 
     # Time discretization and numerical diffusion
-    Tf = 35
-    At = 0.07
+    Tf = 1
+    At = 0.05
     nTimeSteps = int(Tf / At)
 
     # Create the combined GIF

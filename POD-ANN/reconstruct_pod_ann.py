@@ -1,15 +1,23 @@
+"""
+torch_pod_ann_reconstruction.py
+Reconstruct one snapshot file with a trained latent-space POD-ANN decoder
+and create a comparison GIF.
+"""
+
+import time, os
 import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.animation import FuncAnimation, PillowWriter
-import os
-import random
 import torch
 import torch.nn as nn
+import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation, PillowWriter
 
-# Define the ANN model
+
+# ────────────────────────────────────────────────────────────────
+# ANN architecture (must match training)
+# ────────────────────────────────────────────────────────────────
 class POD_ANN(nn.Module):
     def __init__(self, input_dim, output_dim):
-        super(POD_ANN, self).__init__()
+        super().__init__()
         self.fc1 = nn.Linear(input_dim, 32)
         self.fc2 = nn.Linear(32, 64)
         self.fc3 = nn.Linear(64, 128)
@@ -24,136 +32,91 @@ class POD_ANN(nn.Module):
         x = self.elu(self.fc3(x))
         x = self.elu(self.fc4(x))
         x = self.elu(self.fc5(x))
-        x = self.fc6(x)
-        return x
+        return self.fc6(x)
 
-# Function to create gif with all snapshots overlaid
-def create_combined_gif(X, original_snapshot, ann_reconstructed, nTimeSteps, At, latent_dim):
-    fig, ax = plt.subplots(figsize=(10, 6))
+
+# ────────────────────────────────────────────────────────────────
+# Helper: GIF of FOM vs reconstruction
+# ────────────────────────────────────────────────────────────────
+def create_combined_gif(X, U_fom, U_rec, n_steps, dt, n_ret, n_dis,
+                        fname="pod_ann_reconstruction.gif"):
+    fig, ax = plt.subplots(figsize=(9, 5))
     ax.set_xlim(X[0], X[-1])
-    ax.set_ylim(0, 8)
+    ax.set_ylim(U_fom.min(), U_fom.max())
+    line_fom, = ax.plot(X, U_fom[:, 0], 'b-',  label='FOM')
+    label_rec = fr"POD-ANN ($n={n_ret}$, $\bar n={n_dis}$)"
+    line_rec, = ax.plot(X, U_rec[:, 0], 'g--', label=label_rec)
+    ax.set_xlabel('x'); ax.set_ylabel('u'); ax.legend()
 
-    line_original, = ax.plot(X, original_snapshot[:, 0], 'b-', label='Original Snapshot')
-    line_ann, = ax.plot(X, ann_reconstructed[:, 0], 'g--', label=f'POD-ANN Reconstructed (inf modes={latent_dim}, sup modes={301})')
+    def update(k):
+        line_fom.set_ydata(U_fom[:, k])
+        line_rec.set_ydata(U_rec[:, k])
+        ax.set_title(f"t = {k*dt:.2f}")
+        return line_fom, line_rec
 
-    ax.set_title('Snapshot Comparison')
-    ax.set_xlabel('x')
-    ax.set_ylabel('u')
-    ax.legend()
+    ani = FuncAnimation(fig, update, frames=n_steps+1, blit=True)
+    ani.save(fname, writer=PillowWriter(fps=10))
+    plt.close(fig)
 
-    def update(frame):
-        line_original.set_ydata(original_snapshot[:, frame])
-        line_ann.set_ydata(ann_reconstructed[:, frame])
-        ax.set_title(f'Snapshot Comparison at t = {frame * At:.2f}')
-        return line_original, line_ann
 
-    ani = FuncAnimation(fig, update, frames=nTimeSteps + 1, blit=True)
+# ────────────────────────────────────────────────────────────────
+# Reconstruction routine
+# ────────────────────────────────────────────────────────────────
+def reconstruct_snapshot_with_pod_ann(snapshot_file, U_p, U_s, model):
+    """Return (FOM_snapshots, reconstructed_snapshots)."""
+    snapshots = np.load(snapshot_file)          # shape (N × N_t)
+    U_combined = np.hstack((U_p, U_s))          # (N × n_tot)
 
-    # Save animation as GIF
-    ani.save("pod_ann_reconstruction.gif", writer=PillowWriter(fps=10))
+    # retained coords q_p
+    q = U_combined.T @ snapshots
+    n_ret = U_p.shape[1]
+    q_p   = q[:n_ret, :]                        # (n × N_t)
 
-    plt.show()
+    # ANN prediction of discarded coords
+    with torch.no_grad():
+        q_p_tensor = torch.tensor(q_p.T, dtype=torch.float32)
+        q_s_tensor = model(q_p_tensor)          # (N_t × n̄)
+        q_s        = q_s_tensor.numpy().T       # (n̄ × N_t)
 
-# Function to reconstruct snapshot using POD-ANN
-# def reconstruct_snapshot_with_pod_ann(snapshot_file, U, U_p, U_s, model, r, q_p_mean, q_p_std, q_s_mean, q_s_std):
-def reconstruct_snapshot_with_pod_ann(snapshot_file, U, U_p, U_s, model, r):
-    # Load the snapshot file
-    snapshots = np.load(snapshot_file)
+    snapshots_rec = U_p @ q_p + U_s @ q_s       # (N × N_t)
+    return snapshots, snapshots_rec
 
-    # Project onto the POD basis
-    q = U.T @ snapshots
-    q_p = q[:r, :]
 
-    # Normalize the q_p modes
-    # q_p_normalized = (q_p - q_p_mean) / q_p_std
+# ────────────────────────────────────────────────────────────────
+# MAIN
+# ────────────────────────────────────────────────────────────────
+if __name__ == "__main__":
 
-    # Initialize the model and set it to evaluation mode
+    # Load POD bases
+    U_p = np.load("U_p.npy")        # (N × 17)
+    U_s = np.load("U_s.npy")        # (N × 79)
+    n_ret, n_dis = U_p.shape[1], U_s.shape[1]
+
+    # Load trained model (entire object saved)
+    model = torch.load("pod_ann_model.pth", map_location="cpu")
     model.eval()
 
-    # Reconstruct the snapshots
-    reconstructed_snapshots_ann = []
-    for i in range(q_p.shape[1]):
-        q_p_sample = torch.tensor(q_p[:, i], dtype=torch.float32).unsqueeze(0)
-        with torch.no_grad():
-            q_s_pred = model(q_p_sample)
-        q_s_pred = q_s_pred.numpy().T
-        q_s_pred_denorm = q_s_pred #* q_s_std + q_s_mean
-        reconstructed_snapshot_ann = U_p @ q_p[:, i] + U_s @ q_s_pred.reshape(-1)
-        reconstructed_snapshots_ann.append(reconstructed_snapshot_ann)
+    snapshot_file = "../FEM/fem_training_data/fem_simulation_mu1_4.250_mu2_0.0150.npy"
 
-    # Convert lists to arrays and return
-    reconstructed_snapshots_ann = np.array(reconstructed_snapshots_ann).squeeze().T
-    return reconstructed_snapshots_ann
+    t0 = time.time()
+    U_fom, U_rec = reconstruct_snapshot_with_pod_ann(snapshot_file, U_p, U_s, model)
+    print(f"reconstruction time  {time.time()-t0:.2f} s")
 
-if __name__ == '__main__':
+    rel_err = np.linalg.norm(U_fom - U_rec) / np.linalg.norm(U_fom)
+    print(f"relative L2 error    {rel_err:.3e}")
 
-    # Load the trained ANN model
-    pod_ann_model = torch.load('pod_ann_model.pth')
-    pod_ann_model.eval()
+    np.save("pod_ann_reconstruction.npy", U_rec)
 
-    # Load the mean and std values
-    # data_path = '../FEM/training_data/'  # Replace with your data folder
-    # files = [os.path.join(data_path, f) for f in os.listdir(data_path) if f.endswith('.npy')]
-    # all_snapshots = []
+    # Mesh and time grid (match thesis settings)
+    a, b = 0.0, 100.0
+    m    = 511                     # N = m+1
+    X    = np.linspace(a, b, m+1)
 
-    # for file in files:
-    #     snapshots = np.load(file)
-    #     all_snapshots.append(snapshots)
+    Tf   = 5.0
+    dt   = 0.05
+    n_ts = int(Tf / dt)
 
-    # all_snapshots = np.hstack(all_snapshots)  # Ensure shape is (248000, 513)
-    # mean = np.mean(all_snapshots)
-    # std = np.std(all_snapshots)
-
-    # Load a random snapshot from the training_data directory
-    # snapshot_file = '../FEM/training_data/simulation_mu1_4.76_mu2_0.0182.npy'
-    snapshot_file = '../FEM/testing_data/simulations/simulation_mu1_4.85_mu2_0.0222.npy'
-    snapshot = np.load(snapshot_file)
-
-    # Prepare training data for POD-ANN
-    U_p = np.load('U_p.npy')
-    U_s = np.load('U_s.npy')
-    U = np.hstack((U_p, U_s))
-    # q = U.T @ all_snapshots  # Project snapshots onto the POD basis
-    # q_p = q[:28, :]  # Principal modes
-    # q_s = q[28:301, :]  # Secondary modes
-
-    # # Normalize the q_p and q_s modes for the neural network
-    # q_p_mean = np.mean(q_p, axis=1, keepdims=True)
-    # q_p_std = np.std(q_p, axis=1, keepdims=True)
-    # q_p_normalized = (q_p - q_p_mean) / q_p_std
-
-    # q_s_mean = np.mean(q_s, axis=1, keepdims=True)
-    # q_s_std = np.std(q_s, axis=1, keepdims=True)
-    # q_s_normalized = (q_s - q_s_mean) / q_s_std
-
-    # Reconstruct the snapshot using POD-ANN
-    # pod_ann_reconstructed = reconstruct_snapshot_with_pod_ann(
-    #     snapshot_file, U, U_p, U_s, pod_ann_model, 28, q_p_mean, q_p_std, q_s_mean, q_s_std
-    # )
-    import time
-    start = time.time()
-    pod_ann_reconstructed = reconstruct_snapshot_with_pod_ann(
-        snapshot_file, U, U_p, U_s, pod_ann_model, 28
-    )
-    end = time.time()
-    print(f"Time {start-end}")
-    print(f"Error: {np.linalg.norm(snapshot-pod_ann_reconstructed)/np.linalg.norm(snapshot)}")
-
-    np.save("pod_ann_reconstruction.npy", pod_ann_reconstructed)
-
-    # Domain
-    a = 0
-    b = 100
-    m = int(256 * 2)
-    X = np.linspace(a, b, m + 1)
-
-    # Time discretization and numerical diffusion
-    Tf = 35
-    At = 0.07
-    nTimeSteps = int(Tf / At)
-
-    # Create the combined GIF
-    create_combined_gif(X, snapshot, pod_ann_reconstructed, nTimeSteps, At, 28)
+    create_combined_gif(X, U_fom, U_rec, n_ts, dt, n_ret, n_dis)
 
 
 
