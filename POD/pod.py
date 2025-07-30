@@ -27,7 +27,7 @@ def plot_singular_values(s, SnapshotsMatrix, tolerances_squared=None):
     plt.plot(linear_relative_loss, linewidth=2)
     plt.yscale('log')
     colours = ['k', 'm', 'g', 'b', 'r', 'c', 'y']
-    plt.ylabel(r'$1 - \frac{\sum_{i=1}^{n} \sigma_i}{\sum_{i=1}^{m} \sigma_i}$', size=15)
+    plt.ylabel(r'$1 - \frac{\sum_{i=1}^{n} \sigma_i}{\sum_{i=1}^{r} \sigma_i}$', size=15)
     plt.xlabel(r'Singular value index $n$', size=15)
 
     if tolerances_squared is not None:
@@ -41,7 +41,7 @@ def plot_singular_values(s, SnapshotsMatrix, tolerances_squared=None):
     plt.legend()
     plt.tight_layout()
     os.makedirs("modes", exist_ok=True)
-    # plt.savefig("modes/singular_value_decay_linear_loss.pdf", format='pdf')
+    plt.savefig("modes/singular_value_decay_linear_loss.pdf", format='pdf')
     plt.close()
 
 
@@ -83,7 +83,7 @@ if __name__ == '__main__':
 
     U, s, _ = np.linalg.svd(all_snapshots, full_matrices=False)
 
-    eps2_tols = [2e-2]#[1e-2, 1e-3, 1e-4, 1e-5, 1e-6]  
+    eps2_tols = [1e-2, 1e-3, 1e-4, 1e-5, 1e-6]  
 
     plot_singular_values(s, all_snapshots, eps2_tols)
     plot_modes(U, num_modes=6)
