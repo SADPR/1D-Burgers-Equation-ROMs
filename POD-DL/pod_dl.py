@@ -85,14 +85,20 @@ input_dim = n
 latent_dim = 5  # You can vary this
 model = Autoencoder(input_dim, latent_dim)
 criterion = nn.MSELoss()
-optimizer = optim.Adam(model.parameters(), lr=1e-4)
-scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=5)
+optimizer = optim.Adam(model.parameters(), lr=1e-3)
+scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.3, patience=5)
 
-# Training loop
-def train_autoencoder(model, train_loader, test_loader, criterion, optimizer, scheduler, num_epochs=500, clip_value=1.0):
+# Training loop with early stopping
+def train_autoencoder(model, train_loader, test_loader, criterion, optimizer, scheduler,
+                      num_epochs=1000, clip_value=1.0, patience=20, save_path='autoencoder_model.pth'):
+
+    best_val_loss = float('inf')
+    epochs_without_improvement = 0
+    best_model_state = None
+
     for epoch in range(num_epochs):
         model.train()
-        train_loss = 0
+        train_loss = 0.0
         for data, _ in train_loader:
             optimizer.zero_grad()
             output = model(data)
@@ -104,7 +110,7 @@ def train_autoencoder(model, train_loader, test_loader, criterion, optimizer, sc
         train_loss /= len(train_loader.dataset)
 
         model.eval()
-        val_loss = 0
+        val_loss = 0.0
         with torch.no_grad():
             for data, _ in test_loader:
                 output = model(data)
@@ -113,6 +119,24 @@ def train_autoencoder(model, train_loader, test_loader, criterion, optimizer, sc
         scheduler.step(val_loss)
 
         print(f"Epoch [{epoch+1}/{num_epochs}] Train Loss: {train_loss:.6f} | Val Loss: {val_loss:.6f}")
+
+        # Early stopping logic
+        if val_loss < best_val_loss - 1e-6:  # Small improvement threshold
+            best_val_loss = val_loss
+            best_model_state = model.state_dict()
+            epochs_without_improvement = 0
+        else:
+            epochs_without_improvement += 1
+            if epochs_without_improvement >= patience:
+                print(f"Early stopping at epoch {epoch+1}. Best Val Loss: {best_val_loss:.6f}")
+                break
+
+    # Restore best model and save it
+    if best_model_state is not None:
+        model.load_state_dict(best_model_state)
+        torch.save(model.state_dict(), save_path)
+        print(f"Best model saved to {save_path}")
+
 
 # Train
 train_autoencoder(model, train_loader, test_loader, criterion, optimizer, scheduler)
