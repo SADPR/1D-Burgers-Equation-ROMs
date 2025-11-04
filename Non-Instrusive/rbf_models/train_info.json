@@ -1,0 +1,21 @@
+{
+  "files": [
+    "fem_simulation_mu1_4.250_mu2_0.0150.npy",
+    "fem_simulation_mu1_4.250_mu2_0.0225.npy",
+    "fem_simulation_mu1_4.250_mu2_0.0300.npy",
+    "fem_simulation_mu1_4.875_mu2_0.0150.npy",
+    "fem_simulation_mu1_4.875_mu2_0.0225.npy",
+    "fem_simulation_mu1_4.875_mu2_0.0300.npy",
+    "fem_simulation_mu1_5.500_mu2_0.0150.npy",
+    "fem_simulation_mu1_5.500_mu2_0.0225.npy",
+    "fem_simulation_mu1_5.500_mu2_0.0300.npy"
+  ],
+  "Ns": 4509,
+  "n_modes": 227,
+  "kernel": "gaussian",
+  "epsilon": 1.0,
+  "neighbors": 100,
+  "smoothing": 1e-08,
+  "inputs": "Z=[mu1,mu2,tau in 0..1]",
+  "time_normalization": "index"
+}

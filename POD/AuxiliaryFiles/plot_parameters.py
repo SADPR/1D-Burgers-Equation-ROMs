@@ -27,7 +27,7 @@ mu2_test = np.array([0.020, 0.019, 0.026])
 # === Plotting ===
 plt.figure(figsize=(6, 5))
 plt.scatter(mu1_train, mu2_train, color='black', label=r'\textbf{Training points}')
-plt.scatter(mu1_test, mu2_test, color='blue', marker='x', s=80, label=r'\textbf{Testing points}')
+# plt.scatter(mu1_test, mu2_test, color='blue', marker='x', s=80, label=r'\textbf{Testing points}')
 
 plt.xlabel(r'$\mu_1$')
 plt.ylabel(r'$\mu_2$')
@@ -39,5 +39,5 @@ plt.ylim(0.01,0.035)
 plt.tight_layout()
 
 # === Save ===
-plt.savefig("parametric_domain.pdf", format="pdf", bbox_inches='tight')
+plt.savefig("training_parametric_domain.png", format="png", bbox_inches='tight')
 plt.show()

@@ -6,9 +6,10 @@ import os
 
 # Definir parámetros de prueba
 test_samples = np.array([
-    [4.560, 0.0190],
-    [4.750, 0.0200],
-    [5.190, 0.0260]
+    # [4.560, 0.0190],
+    # [4.750, 0.0200],
+    # [5.190, 0.0260]
+    [6.20, 0.0400]
 ])
 
 # Crear carpetas

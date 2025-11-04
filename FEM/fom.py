@@ -19,14 +19,14 @@ if __name__ == "__main__":
     u0 = np.ones_like(X)
 
     # Time discretization and numerical diffusion
-    Tf = 1.0
+    Tf = 25.0
     At = 0.05
     nTimeSteps = int(Tf / At)
     E = 0.00
 
     # Parameters
-    mu1 = 4.75
-    mu2 = 0.0200
+    mu1 = 5.65#4.75
+    mu2 = 0.0330#0.0200
 
     # Create an instance of the FEMBurgers class
     fem_burgers = FEMBurgers(X, T)

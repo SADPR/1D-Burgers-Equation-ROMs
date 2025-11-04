@@ -26,13 +26,14 @@ if __name__ == "__main__":
 
     # Test points: each a tuple (mu1, mu2)
     test_points = [
-        (4.75, 0.0200),
-        (4.56, 0.0190),
-        (5.19, 0.0260)
+        # (4.75, 0.0200),
+        # (4.56, 0.0190),
+        # (5.19, 0.0260)
+        (6.20, 0.0400)
     ]
 
     # ROM tolerances
-    tolerances = [2e-2]
+    tolerances = [1e-5]
 
     # Projection types
     projections = ["LSPG"]

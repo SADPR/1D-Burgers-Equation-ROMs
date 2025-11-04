@@ -1,0 +1,13 @@
+{
+  "files": [
+    "fem_simulation_mu1_4.250_mu2_0.0150.npy",
+    "fem_simulation_mu1_4.250_mu2_0.0225.npy",
+    "fem_simulation_mu1_4.250_mu2_0.0300.npy",
+    "fem_simulation_mu1_4.875_mu2_0.0150.npy",
+    "fem_simulation_mu1_4.875_mu2_0.0225.npy",
+    "fem_simulation_mu1_4.875_mu2_0.0300.npy",
+    "fem_simulation_mu1_5.500_mu2_0.0150.npy",
+    "fem_simulation_mu1_5.500_mu2_0.0225.npy",
+    "fem_simulation_mu1_5.500_mu2_0.0300.npy"
+  ]
+}
