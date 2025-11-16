@@ -1,121 +1,157 @@
+#!/usr/bin/env python3
+# ---- Pure POD–RBF reconstruction (no PROM dynamics) -----------------
+# Uses r = ||x - x'|| distances, loads min–max scaling, and UN-SCALES Qbar_hat.
+
+import os
+import pickle
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.animation import FuncAnimation, PillowWriter
-import pickle
-import os
 
-# Function to compute Euclidean distances between two sets of points
-def compute_distances(X1, X2):
-    """Compute pairwise Euclidean distances between two sets of points."""
-    # X1 has shape (1, 28), X2 has shape (28, 2000), we want distances between the single point in X1 and each point in X2.
-    # print(f"Shape of X1: {X1.shape}, Shape of X2: {X2.shape}")  # Debugging print
+plt.rc('text', usetex=False)
+plt.rc('font', family='serif')
 
-    # Correct the subtraction so that each point in X2 is compared to the single point in X1
-    dists = np.sqrt(np.sum((X1 - X2) ** 2, axis=1))
+# -------------------- user config --------------------
+a, b = 0.0, 100.0
+m = 511
+Xgrid = np.linspace(a, b, m + 1)
 
-    # print(f"Shape of distances: {dists.shape}")  # Debugging print
-    return dists
+At = 0.05
+Tf = 25.0
+nTimeSteps = int(Tf / At)
 
+# choose a test point (may be a training point)
+test_mu1, test_mu2 = (4.750, 0.0200)
 
-# Function to compute the Gaussian RBF kernel
+# Artifacts dir from training
+rbf_dir = "rbf_training_simple"
+Phi_p_path   = os.path.join(rbf_dir, "Phi_primary.npy")
+Phi_s_path   = os.path.join(rbf_dir, "Phi_secondary.npy")
+xtrain_txt   = os.path.join(rbf_dir, "rbf_xTrain.txt")          # scaled X (Ns × n)
+precomp_txt  = os.path.join(rbf_dir, "rbf_precomputations.txt")  # W (Ns × nbar)
+stdscale_txt = os.path.join(rbf_dir, "rbf_stdscaling.txt")       # min–max params
+hyper_txt    = os.path.join(rbf_dir, "rbf_hyper.txt")            # kernel + epsilon
+
+# FOM file (assumed precomputed)
+fom_dir  = "../FEM/fem_testing_data"
+fom_file = f"fem_simulation_mu1_{test_mu1:.3f}_mu2_{test_mu2:.4f}.npy"
+fom_path = os.path.join(fom_dir, fom_file)
+
+# -------------------- kernels k(r, eps) with r = Euclidean distance -----------
 def gaussian_rbf(r, epsilon):
-    """Gaussian RBF kernel function."""
     return np.exp(-(epsilon * r) ** 2)
 
-# Function to interpolate using precomputed weights
-def interpolate_with_weights(X_train, W, x_new, epsilon):
-    """Interpolate at new points using precomputed weights."""
-    # print(f"Shape of x_new: {x_new.shape}, Shape of X_train: {X_train.shape}, Shape of W: {W.shape}")  # Debugging print
-    dists = compute_distances(x_new, X_train)  # Compute distances between the new point and training points
-    rbf_values = gaussian_rbf(dists, epsilon)  # Apply RBF kernel
-    # print(f"Shape of RBF values: {rbf_values.shape}")  # Debugging print
-    f_new = rbf_values @ W  # Use precomputed weights for interpolation
-    # print(f"Shape of interpolated values: {f_new.shape}")  # Debugging print
-    return f_new
+def inverse_multiquadric_rbf(r, epsilon):
+    return 1.0 / np.sqrt(1.0 + (epsilon * r) ** 2)
 
-# Function to reconstruct snapshot using precomputed RBF weights
-def reconstruct_snapshot_with_pod_rbf(snapshot_file, U_p, U_s, q_p_train, W, r, epsilon):
-    # Load the snapshot file
-    snapshots = np.load(snapshot_file)
+rbf_kernels = {
+    "gaussian": gaussian_rbf,
+    "imq": inverse_multiquadric_rbf,
+}
 
-    # Project onto the POD basis to get q_p
-    q = U_p.T @ snapshots
-    q_p = q[:r, :]
-    # print(f"Shape of q_p: {q_p.shape}")  # Debugging print
+# -------------------- 0) load FOM --------------------------------------------
+if not os.path.isfile(fom_path):
+    raise FileNotFoundError(f"FOM not found: {fom_path}")
+print(f"[FOM] Loading {fom_path}")
+U_FOM = np.load(fom_path)   # (N, T) with T = nTimeSteps+1
 
-    # Reconstruct the snapshots using precomputed RBF weights
-    reconstructed_snapshots_rbf = []
-    for i in range(q_p.shape[1]):
-        q_p_sample = np.array(q_p[:, i].reshape(1, -1))  # Reshape to match input format for RBF
-        # print(f"Shape of q_p_sample: {q_p_sample.shape}")  # Debugging print
-        q_s_pred = interpolate_with_weights(np.array(q_p_train), np.array(W), q_p_sample, epsilon).T  # Use precomputed weights
-        # print(f"Shape of q_s_pred: {q_s_pred.shape}")  # Debugging print
-        reconstructed_snapshot_rbf = U_p @ q_p[:, i] + U_s @ q_s_pred.reshape(-1)
-        # print(f"Shape of reconstructed_snapshot_rbf: {reconstructed_snapshot_rbf.shape}")  # Debugging print
-        reconstructed_snapshots_rbf.append(reconstructed_snapshot_rbf)
+# -------------------- 1) load artifacts --------------------------------------
+U_p = np.load(Phi_p_path)   # (N, n)
+U_s = np.load(Phi_s_path)   # (N, nbar)
 
-    # Convert list to array and return
-    reconstructed_snapshots_rbf = np.array(reconstructed_snapshots_rbf).squeeze().T
-    print(f"Final shape of reconstructed_snapshots_rbf: {reconstructed_snapshots_rbf.shape}")  # Debugging print
-    return reconstructed_snapshots_rbf
+# scaling params (min–max)
+with open(stdscale_txt, "r") as f:
+    in_size, out_size = map(int, f.readline().split())
+    scalingMethod = int(f.readline().strip())
+    if scalingMethod != 1:
+        raise ValueError("Expected min–max scaling method (1).")
+x_min = np.loadtxt(stdscale_txt, skiprows=2, max_rows=1)  # (n,)
+x_max = np.loadtxt(stdscale_txt, skiprows=3, max_rows=1)  # (n,)
+y_min = np.loadtxt(stdscale_txt, skiprows=4, max_rows=1)  # (nbar,)
+y_max = np.loadtxt(stdscale_txt, skiprows=5, max_rows=1)  # (nbar,)
 
-# Function to create gif with all snapshots overlaid
-def create_combined_gif(X, original_snapshot, rbf_reconstructed, nTimeSteps, At, latent_dim):
-    fig, ax = plt.subplots(figsize=(10, 6))
-    ax.set_xlim(X[0], X[-1])
-    ax.set_ylim(0, 8)
+# X_train (scaled) and W
+with open(xtrain_txt, "r") as f:
+    Ns, n = map(int, f.readline().split())
+X_train = np.loadtxt(xtrain_txt, skiprows=1)  # (Ns, n)
+if X_train.ndim == 1:
+    X_train = X_train[None, :]
+with open(precomp_txt, "r") as f:
+    W_rows, W_cols = map(int, f.readline().split())
+W = np.loadtxt(precomp_txt, skiprows=1)       # (Ns, nbar)
+if W.ndim == 1:
+    W = W[:, None]
 
-    line_original, = ax.plot(X, original_snapshot[:, 0], 'b-', label='Original Snapshot')
-    line_rbf, = ax.plot(X, rbf_reconstructed[:, 0], 'g--', label=f'POD-RBF Reconstructed (inf modes={latent_dim}, sup modes={301})')
+# kernel + epsilon
+with open(hyper_txt, "r") as f:
+    _hdr = f.readline().strip()
+    kernel_name = f.readline().strip()
+    epsilon = float(f.readline().strip())
+kernel_func = rbf_kernels[kernel_name]
 
-    ax.set_title('Snapshot Comparison')
-    ax.set_xlabel('x')
-    ax.set_ylabel('u')
-    ax.legend()
+# -------------------- sanity checks -------------------------------------------
+N = Xgrid.size
+if U_FOM.shape[0] != N:
+    raise ValueError(f"U_FOM rows {U_FOM.shape[0]} != N={N}")
+if U_p.shape[0] != N or U_s.shape[0] != N:
+    raise ValueError("U_p and U_s must have N rows.")
+if U_p.shape[1] != n:
+    raise ValueError(f"Primary dim mismatch: U_p has n={U_p.shape[1]} vs X_train n={n}")
+if W.shape != (X_train.shape[0], U_s.shape[1]):
+    raise ValueError(f"W shape {W.shape} expected {(X_train.shape[0], U_s.shape[1])}")
 
-    def update(frame):
-        line_original.set_ydata(original_snapshot[:, frame])
-        line_rbf.set_ydata(rbf_reconstructed[:, frame])
-        ax.set_title(f'Snapshot Comparison at t = {frame * At:.2f}')
-        return line_original, line_rbf
+print(f"[artifacts] Φ {U_p.shape}, Φ̄ {U_s.shape}, X_train {X_train.shape}, W {W.shape}")
+print(f"[params] kernel={kernel_name}, ε={epsilon:.6f}")
 
-    ani = FuncAnimation(fig, update, frames=nTimeSteps + 1, blit=True)
+# -------------------- 2) project FOM onto primary coords ----------------------
+Tsteps = U_FOM.shape[1]
+Qp = (U_p.T @ U_FOM).T      # (T, n), rows = time samples
 
-    plt.show()
+# -------------------- 3) scale q_p(t) to [-1,1] ------------------------------
+dx = (x_max - x_min).copy()
+dx[dx < 1e-15] = 1.0
+X_query = 2.0 * ((Qp - x_min) / dx) - 1.0    # (T, n)
 
-if __name__ == '__main__':
-    # Load the RBF model data (q_p_train and precomputed weights W)
-    with open('rbf_weights.pkl', 'rb') as f:
-        q_p_train, W = pickle.load(f)
+# -------------------- 4) RBF prediction of secondary coords -------------------
+# Distances r between each query and each training input
+dists_q = np.linalg.norm(
+    X_query[:, np.newaxis, :] - X_train[np.newaxis, :, :], axis=2
+)                                            # (T, Ns)
+Phi_q = kernel_func(dists_q, epsilon)        # (T, Ns)
+Qbar_hat_scaled_rows = Phi_q @ W             # (T, nbar)  <-- scaled secondary coords
 
-    # Load a random snapshot from the training_data directory
-    snapshot_file = '../FEM/training_data/simulation_mu1_4.76_mu2_0.0182.npy'
-    snapshot = np.load(snapshot_file)
+# -------- UN-SCALE Y back to original secondary coordinates (CRUCIAL) --------
+dy = (y_max - y_min).copy()
+dy[dy < 1e-15] = 1.0
+Qbar_hat_rows = 0.5 * (Qbar_hat_scaled_rows + 1.0) * dy[None, :] + y_min[None, :]  # (T, nbar)
 
-    # Load U_p and U_s
-    U_p = np.load('U_p.npy')
-    U_s = np.load('U_s.npy')
+# Transpose to (nbar, T) for reconstruction
+Qbar_hat = Qbar_hat_rows.T
 
-    epsilon = 1.0
+# -------------------- 5) reconstruct in HDM space -----------------------------
+U_hat = (U_p @ Qp.T) + (U_s @ Qbar_hat)       # (N, T)
 
-    # Reconstruct the snapshot using precomputed RBF weights
-    pod_rbf_reconstructed = reconstruct_snapshot_with_pod_rbf(
-        snapshot_file, U_p, U_s, q_p_train, W, 28, epsilon
-    )
+# -------------------- 6) errors ----------------------------------------------
+num = np.linalg.norm(U_FOM - U_hat)
+den = np.linalg.norm(U_FOM)
+rel_frob = num / (den + 1e-14)
+rel_L2_time = np.linalg.norm(U_FOM - U_hat, axis=0) / (np.linalg.norm(U_FOM, axis=0) + 1e-14)
 
-    np.save("pod_rbf_reconstruction.npy", pod_rbf_reconstructed)
+print("\n=== Pure POD–RBF reconstruction (no PROM) ===")
+print(f"Frobenius relative error over trajectory: {100*rel_frob:.4f}%")
 
-    # Domain
-    a = 0
-    b = 100
-    m = int(256 * 2)
-    X = np.linspace(a, b, m + 1)
+# -------------------- 7) plots (no saving) ------------------------------------
+snapshot_times = [5, 10, 15, 20, 25]
+snapshot_idx   = [min(int(t / At), Tsteps-1) for t in snapshot_times]
 
-    # Time discretization and numerical diffusion
-    Tf = 35
-    At = 0.07
-    nTimeSteps = int(Tf / At)
-
-    # Create the combined GIF
-    create_combined_gif(X, snapshot, pod_rbf_reconstructed, nTimeSteps, At, 28)
+plt.figure(figsize=(8,5))
+for t_idx, t_val in zip(snapshot_idx, snapshot_times):
+    plt.plot(Xgrid, U_FOM[:, t_idx], 'k-', linewidth=1.5,
+             label="HDM" if t_idx == snapshot_idx[0] else "")
+    plt.plot(Xgrid, U_hat[:, t_idx], 'b--', linewidth=1.5,
+             label="POD–RBF" if t_idx == snapshot_idx[0] else "")
+plt.xlabel("x"); plt.ylabel("u")
+plt.title(f"Pure POD–RBF reconstruction\n(mu1={test_mu1:.3f}, mu2={test_mu2:.4f})")
+plt.legend(ncol=2)
+plt.grid(True, linestyle="--", linewidth=0.5)
+plt.show()
 

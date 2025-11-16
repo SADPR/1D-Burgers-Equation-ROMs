@@ -8,6 +8,258 @@ from scipy.sparse import lil_matrix
 import matplotlib.pyplot as plt
 from scipy.spatial.distance import pdist, squareform
 
+# --- bounds / FD steps (same spirit as your offline script) ---
+S_MIN, S_MAX   = 0.75, 1.25
+G_MIN, G_MAX   = -0.8, 0.8
+K_MIN_FRAC     = -0.5       # kappa in [-0.5*N, 0.5*N]
+K_MAX_FRAC     =  0.5
+
+FD_EPS_S       = 1e-3
+FD_EPS_GAMMA   = 1e-3
+FD_EPS_KAPPA   = 1e-2
+
+
+def dilate_warp(u, s, gamma, x):
+    """
+    Dilate + warp u(x) in 1D using linear interpolation.
+
+    Baseline:
+        ξ_raw = x / s
+        ξ     = clip(ξ_raw, 0, 1-eps)
+    Warp:
+        ξγ = ξ + γ ξ (1 - ξ)
+        ξγ = clip(ξγ, 0, 1-eps)
+    """
+    N = u.size
+    eps = 1e-12
+
+    xi_raw = x / s
+    xi = np.clip(xi_raw, 0.0, 1.0 - eps)
+
+    xi_gamma = xi + gamma * xi * (1.0 - xi)
+    xi_gamma = np.clip(xi_gamma, 0.0, 1.0 - eps)
+
+    z  = xi_gamma * (N - 1)
+    i0 = np.floor(z).astype(int)
+    i1 = np.minimum(i0 + 1, N - 1)
+    w  = z - i0
+
+    u0 = u[i0]
+    u1 = u[i1]
+
+    return (1.0 - w) * u0 + w * u1
+
+
+def shift_continuous_clamped(u, kappa):
+    """
+    Continuous shift in index space, with clamping.
+
+    For each index i:
+        src = i - kappa
+        clamp src in [0, N-1]
+        u_shift[i] = linear interpolation of u at src
+    """
+    N = u.size
+    idx = np.arange(N, dtype=float)
+    z = idx - kappa
+    z = np.clip(z, 0.0, N - 1.0 - 1e-12)
+
+    i0 = np.floor(z).astype(int)
+    i1 = np.minimum(i0 + 1, N - 1)
+    w  = z - i0
+
+    u0 = u[i0]
+    u1 = u[i1]
+
+    return (1.0 - w) * u0 + w * u1
+
+
+def lie_transform(u_ref, s, gamma, kappa, x):
+    """
+    Full Lie transform:
+        u_sg  = dilate_warp(u_ref; s, gamma)
+        u_mod = shift_continuous_clamped(u_sg; kappa)
+    """
+    u_sg  = dilate_warp(u_ref, s, gamma, x)
+    u_mod = shift_continuous_clamped(u_sg, kappa)
+    return u_mod
+
+
+def alpha_beta_ls(u, y):
+    """
+    Closed-form LS for α, β in:
+        y ≈ α u + β 1
+    """
+    N = u.size
+    c  = float(N)
+    e  = float(y.sum())
+
+    a = float(u @ u)
+    b = float(u.sum())
+    d = float(u @ y)
+
+    det = a * c - b * b
+    if abs(det) < 1e-14:
+        alpha = d / (a + 1e-14)
+        beta  = 0.0
+    else:
+        alpha = (d * c - b * e) / det
+        beta  = (-d * b + a * e) / det
+
+    return alpha, beta
+
+
+def lie_state_and_tangent(g, u_ref, x, N):
+    """
+    Given Lie parameters g = (alpha, beta, s, gamma, kappa),
+    and reference u_ref, build:
+
+        u(g)   = alpha * u_mod(s,gamma,kappa) + beta
+        D(g)   = du/dg  (N x 5) via analytic + finite differences
+
+    Returns
+    -------
+    u : (N,) array
+    D : (N,5) array
+    """
+    alpha, beta, s, gamma, kappa = g
+
+    # Base state
+    u_mod = lie_transform(u_ref, s, gamma, kappa, x)
+    u = alpha * u_mod + beta
+
+    D = np.empty((N, 5), dtype=float)
+
+    # ∂u/∂α = u_mod
+    D[:, 0] = u_mod
+    # ∂u/∂β = 1
+    D[:, 1] = 1.0
+
+    # Finite differences for s, gamma, kappa
+    # s
+    s_plus = np.clip(s + FD_EPS_S, S_MIN, S_MAX)
+    u_mod_s = lie_transform(u_ref, s_plus, gamma, kappa, x)
+    u_s = alpha * u_mod_s + beta
+    D[:, 2] = (u_s - u) / FD_EPS_S
+
+    # gamma
+    gamma_plus = np.clip(gamma + FD_EPS_GAMMA, G_MIN, G_MAX)
+    u_mod_g = lie_transform(u_ref, s, gamma_plus, kappa, x)
+    u_g = alpha * u_mod_g + beta
+    D[:, 3] = (u_g - u) / FD_EPS_GAMMA
+
+    # kappa
+    kappa_min = K_MIN_FRAC * N
+    kappa_max = K_MAX_FRAC * N
+    kappa_plus = np.clip(kappa + FD_EPS_KAPPA, kappa_min, kappa_max)
+    u_mod_k = lie_transform(u_ref, s, gamma, kappa_plus, x)
+    u_k = alpha * u_mod_k + beta
+    D[:, 4] = (u_k - u) / FD_EPS_KAPPA
+
+    return u, D
+
+
+# ---------- Kernels (r = Euclidean distance) ----------
+def _k_gaussian(r, eps):
+    return np.exp(-(eps * r) ** 2)
+
+def _k_imq(r, eps):
+    return 1.0 / np.sqrt(1.0 + (eps * r) ** 2)
+
+def _kernel_vals(r, eps, kernel):
+    if kernel == "gaussian":
+        return _k_gaussian(r, eps)
+    elif kernel == "imq":
+        return _k_imq(r, eps)
+    else:
+        raise ValueError("kernel must be 'gaussian' or 'imq'.")
+
+# ---------- Core RBF pieces in SCALED space ----------
+def _rbf_grad_rows_wrt_xscaled(x_scaled, X_train, eps, kernel):
+    """
+    For a single query x_scaled (n,), build the matrix of kernel gradients wrt x_scaled:
+       G[i,:] = ∂ k(||x - x_i||)/∂ x  ∈ R^n
+    where i runs over Ns training points.
+    Returns G of shape (Ns, n). Uses 'r = ||x - x_i||' convention.
+    """
+    diff = x_scaled[None, :] - X_train          # (Ns, n)
+    r = np.linalg.norm(diff, axis=1)            # (Ns,)
+
+    if kernel == "gaussian":
+        k = _k_gaussian(r, eps)                 # (Ns,)
+        # ∂k/∂x = -2 eps^2 * k * (x - x_i)
+        G = (-2.0 * eps**2) * (k[:, None] * diff)
+
+    elif kernel == "imq":
+        s = 1.0 + (eps**2) * (r ** 2)           # (Ns,)
+        k = s ** (-0.5)                         # (Ns,)
+        # ∂k/∂x = -(eps^2) * (x - x_i) * k^3
+        G = (-(eps**2)) * ((k**3)[:, None] * diff)
+
+    else:
+        raise ValueError("kernel must be 'gaussian' or 'imq'.")
+
+    return G  # (Ns, n)
+
+def _rbf_value_scaledY(x_scaled, X_train, W, eps, kernel):
+    """
+    Y_scaled(x) = sum_i k(||x - x_i||) * W[i,:]  -> shape (nbar,)
+    """
+    r = np.linalg.norm(x_scaled[None, :] - X_train, axis=1)  # (Ns,)
+    k = _kernel_vals(r, eps, kernel)                         # (Ns,)
+    return k @ W                                             # (nbar,)
+
+def _rbf_jacobian_scaledY_wrt_xscaled(x_scaled, X_train, W, eps, kernel):
+    """
+    J_scaled = ∂ Y_scaled / ∂ x_scaled  -> shape (nbar, n)
+    = (W^T) @ G, where G[i,:] = ∂k_i/∂x
+    """
+    G = _rbf_grad_rows_wrt_xscaled(x_scaled, X_train, eps, kernel)  # (Ns, n)
+    return W.T @ G                                                  # (nbar, n)
+
+# ---------- Scaling utilities ----------
+def _scale_qp_to_X(q_p, x_min, x_max):
+    dx = (x_max - x_min).copy()
+    dx[dx < 1e-15] = 1.0
+    return 2.0 * ((q_p - x_min) / dx) - 1.0, dx
+
+def _unscale_Y_to_qs(Y_scaled, y_min, y_max):
+    dy = (y_max - y_min).copy()
+    dy[dy < 1e-15] = 1.0
+    return 0.5 * (Y_scaled + 1.0) * dy + y_min, dy
+
+# ---------- Public helpers (use in the PROM loop) ----------
+def interpolate_with_rbf_scaled(q_p, X_train, W, eps, kernel, x_min, x_max, y_min, y_max):
+    """
+    Returns q_s(q_p) with proper scaling:
+      x_scaled = scale(q_p)
+      Y_scaled = RBF(x_scaled)
+      q_s      = unscale(Y_scaled)
+    """
+    x_scaled, _dx = _scale_qp_to_X(q_p, x_min, x_max)
+    Y_scaled = _rbf_value_scaledY(x_scaled, X_train, W, eps, kernel)  # (nbar,)
+    q_s, _dy = _unscale_Y_to_qs(Y_scaled, y_min, y_max)
+    return q_s
+
+def compute_rbf_jacobian_full(q_p, X_train, W, eps, kernel, x_min, x_max, y_min, y_max):
+    """
+    Full-chain Jacobian: J = ∂q_s/∂q_p  (nbar × n),
+      q_s = unscale( Y_scaled( x_scaled(q_p) ) ).
+    Implements:
+      J = diag(0.5*dy) @ (∂Y_scaled/∂x_scaled) @ diag(2/dx)
+        = row_scale(0.5*dy) * J_scaled * col_scale(2/dx)
+    """
+    x_scaled, dx = _scale_qp_to_X(q_p, x_min, x_max)               # (n,)
+    J_scaled = _rbf_jacobian_scaledY_wrt_xscaled(x_scaled, X_train, W, eps, kernel)  # (nbar, n)
+    _, dy = _unscale_Y_to_qs(np.zeros(W.shape[1]), y_min, y_max)   # (nbar,)
+
+    # Column-scale by 2/dx
+    J = J_scaled * (2.0 / dx)[None, :]           # scale columns
+    # Row-scale by 0.5*dy
+    J = (0.5 * dy)[:, None] * J                  # scale rows
+    return J
+
+
 def get_sym(qi):
     ''' Auxiliary function to get the symmetric part of q kron q '''
     size = qi.shape[0]
@@ -1022,106 +1274,6 @@ class FEMBurgers:
 
         return jacobian.detach() # Detach to prevent unnecessary computation graph tracking
 
-        # ---------- Kernels (r = Euclidean distance) ----------
-    def _k_gaussian(r, eps):
-        return np.exp(-(eps * r) ** 2)
-
-    def _k_imq(r, eps):
-        return 1.0 / np.sqrt(1.0 + (eps * r) ** 2)
-
-    def _kernel_vals(r, eps, kernel):
-        if kernel == "gaussian":
-            return _k_gaussian(r, eps)
-        elif kernel == "imq":
-            return _k_imq(r, eps)
-        else:
-            raise ValueError("kernel must be 'gaussian' or 'imq'.")
-
-    # ---------- Core RBF pieces in SCALED space ----------
-    def _rbf_grad_rows_wrt_xscaled(x_scaled, X_train, eps, kernel):
-        """
-        For a single query x_scaled (n,), build the matrix of kernel gradients wrt x_scaled:
-        G[i,:] = ∂ k(||x - x_i||)/∂ x  ∈ R^n
-        where i runs over Ns training points.
-        Returns G of shape (Ns, n). Uses 'r = ||x - x_i||' convention.
-        """
-        diff = x_scaled[None, :] - X_train          # (Ns, n)
-        r = np.linalg.norm(diff, axis=1)            # (Ns,)
-
-        if kernel == "gaussian":
-            k = _k_gaussian(r, eps)                 # (Ns,)
-            # ∂k/∂x = -2 eps^2 * k * (x - x_i)
-            G = (-2.0 * eps**2) * (k[:, None] * diff)
-
-        elif kernel == "imq":
-            s = 1.0 + (eps**2) * (r ** 2)           # (Ns,)
-            k = s ** (-0.5)                         # (Ns,)
-            # ∂k/∂x = -(eps^2) * (x - x_i) * k^3
-            G = (-(eps**2)) * ((k**3)[:, None] * diff)
-
-        else:
-            raise ValueError("kernel must be 'gaussian' or 'imq'.")
-
-        return G  # (Ns, n)
-
-    def _rbf_value_scaledY(x_scaled, X_train, W, eps, kernel):
-        """
-        Y_scaled(x) = sum_i k(||x - x_i||) * W[i,:]  -> shape (nbar,)
-        """
-        r = np.linalg.norm(x_scaled[None, :] - X_train, axis=1)  # (Ns,)
-        k = _kernel_vals(r, eps, kernel)                         # (Ns,)
-        return k @ W                                             # (nbar,)
-
-    def _rbf_jacobian_scaledY_wrt_xscaled(x_scaled, X_train, W, eps, kernel):
-        """
-        J_scaled = ∂ Y_scaled / ∂ x_scaled  -> shape (nbar, n)
-        = (W^T) @ G, where G[i,:] = ∂k_i/∂x
-        """
-        G = _rbf_grad_rows_wrt_xscaled(x_scaled, X_train, eps, kernel)  # (Ns, n)
-        return W.T @ G                                                  # (nbar, n)
-
-    # ---------- Scaling utilities ----------
-    def _scale_qp_to_X(q_p, x_min, x_max):
-        dx = (x_max - x_min).copy()
-        dx[dx < 1e-15] = 1.0
-        return 2.0 * ((q_p - x_min) / dx) - 1.0, dx
-
-    def _unscale_Y_to_qs(Y_scaled, y_min, y_max):
-        dy = (y_max - y_min).copy()
-        dy[dy < 1e-15] = 1.0
-        return 0.5 * (Y_scaled + 1.0) * dy + y_min, dy
-
-    # ---------- Public helpers (use in the PROM loop) ----------
-    def interpolate_with_rbf_scaled(q_p, X_train, W, eps, kernel, x_min, x_max, y_min, y_max):
-        """
-        Returns q_s(q_p) with proper scaling:
-        x_scaled = scale(q_p)
-        Y_scaled = RBF(x_scaled)
-        q_s      = unscale(Y_scaled)
-        """
-        x_scaled, _dx = _scale_qp_to_X(q_p, x_min, x_max)
-        Y_scaled = _rbf_value_scaledY(x_scaled, X_train, W, eps, kernel)  # (nbar,)
-        q_s, _dy = _unscale_Y_to_qs(Y_scaled, y_min, y_max)
-        return q_s
-
-    def compute_rbf_jacobian_full(q_p, X_train, W, eps, kernel, x_min, x_max, y_min, y_max):
-        """
-        Full-chain Jacobian: J = ∂q_s/∂q_p  (nbar × n),
-        q_s = unscale( Y_scaled( x_scaled(q_p) ) ).
-        Implements:
-        J = diag(0.5*dy) @ (∂Y_scaled/∂x_scaled) @ diag(2/dx)
-            = row_scale(0.5*dy) * J_scaled * col_scale(2/dx)
-        """
-        x_scaled, dx = _scale_qp_to_X(q_p, x_min, x_max)               # (n,)
-        J_scaled = _rbf_jacobian_scaledY_wrt_xscaled(x_scaled, X_train, W, eps, kernel)  # (nbar, n)
-        _, dy = _unscale_Y_to_qs(np.zeros(W.shape[1]), y_min, y_max)   # (nbar,)
-
-        # Column-scale by 2/dx
-        J = J_scaled * (2.0 / dx)[None, :]           # scale columns
-        # Row-scale by 0.5*dy
-        J = (0.5 * dy)[:, None] * J                  # scale rows
-        return J
-
     # ---------- POD–RBF PROM (Gauss–Newton with scaling-aware decoder) ----------
     def pod_rbf_prom(self, At, nTimeSteps, u0, mu1, E, mu2,
                     U_p, U_s,
@@ -1168,7 +1320,7 @@ class FEMBurgers:
         dir_row = 0
 
         for nstep in range(nTimeSteps):
-            if nstep % 5 == 0:
+            if nstep % 1 == 0:
                 print(f"Time Step: {nstep}   t = {nstep * At:.3f}")
 
             # start from last converged state
@@ -1202,8 +1354,8 @@ class FEMBurgers:
                 q_p = U_p.T @ U0  # (n,)
 
                 # closure q_s(q_p) and full Jacobian wrt q_p (with scaling)
-                q_s = interpolate_with_rbf_scaled(q_p, X_train, W, epsilon, kernel,
-                                                x_min, x_max, y_min, y_max)        # (nbar,)
+                #q_s = interpolate_with_rbf_scaled(q_p, X_train, W, epsilon, kernel,
+                #                                x_min, x_max, y_min, y_max)        # (nbar,)
                 J_rbf = compute_rbf_jacobian_full(q_p, X_train, W, epsilon, kernel,
                                                 x_min, x_max, y_min, y_max)         # (nbar, n)
 
@@ -1230,11 +1382,13 @@ class FEMBurgers:
                 U1 = U_p @ q_new + U_s @ q_s_new
 
                 # strong BC safety
-                U1[dir_row] = mu1
+                # U1[dir_row] = mu1
 
                 # convergence in reduced coords
                 denom = np.linalg.norm(q_new)
                 err = (np.linalg.norm(delta_q) / denom) if denom > 0 else np.linalg.norm(delta_q)
+
+                print(f"      Newton it={it:2d},  ||dq||/||q|| = {err:.3e}")
 
                 U0 = U1
                 it += 1
@@ -1242,3 +1396,180 @@ class FEMBurgers:
             U[:, nstep + 1] = U1
 
         return U
+    
+    def lie_prom(self,
+                At,
+                nTimeSteps,
+                u0,
+                mu1,
+                E,
+                mu2,
+                kmeans,
+                refs_indices,
+                u_refs,
+                U_global,
+                num_global_modes,
+                projection="LSPG",
+                tol_newton=1e-6,
+                max_newton=30):
+        """
+        Physics-based Lie PROM (multi-reference) for 1D Burgers.
+
+        State representation at each time step:
+            u ≈ u(g; u_ref) = α u_mod(s,γ,κ) + β,
+
+        where u_mod is obtained from the reference snapshot u_ref via
+        dilate+warp+shift (Lie transform).
+
+        Unknowns at each time step: g = (α, β, s, γ, κ).
+
+        Parameters
+        ----------
+        At, nTimeSteps, u0, mu1, E, mu2 : FOM parameters (same as other PROMs)
+        kmeans         : trained KMeans used for cluster assignment in global POD space
+        refs_indices   : array/list of length n_clusters, ref snapshot index per cluster
+        u_refs         : list of length n_clusters, each entry u_ref^(c) as (N,) or None
+        U_global       : (N, r_g) global POD basis for clustering
+        num_global_modes : how many global modes to use for cluster assignment
+        projection     : "LSPG" (default) or "Galerkin" in Lie parameter space
+        tol_newton     : convergence tolerance in ||δg|| / ||g||
+        max_newton     : max Newton iterations per time step
+
+        Returns
+        -------
+        U      : (N, nTimeSteps+1) array, time history of the Lie PROM solution
+        g_hist : (nTimeSteps+1, 5) array, Lie parameters per time step
+        """
+        N = len(self.X)  # number of spatial DoFs (same as FEM)
+        U = np.zeros((N, nTimeSteps + 1))
+        U[:, 0] = u0
+
+        # Keep Lie parameters per time step (for debugging / analysis)
+        g_hist = np.zeros((nTimeSteps + 1, 5))
+
+        # Global POD for cluster assignment
+        Ug_short = U_global[:, :num_global_modes]
+
+        # Spatial grid for Lie transform (0..1)
+        x = np.linspace(0.0, 1.0, N)
+
+        # Cache FEM operators
+        if not hasattr(self, "_M"):
+            self._M = self.compute_mass_matrix()
+        if not hasattr(self, "_K"):
+            self._K = self.compute_diffusion_matrix()
+        M, K = self._M, self._K
+
+        dir_row = 0  # left Dirichlet BC node
+
+        for nstep in range(nTimeSteps):
+            print(f"[Lie PROM] Time Step: {nstep}  t = {nstep * At:.3f}")
+
+            U_prev = U[:, nstep]
+
+            # ---------- 1) Choose cluster & reference snapshot ----------
+            q_global_snapshot = Ug_short.T @ U_prev  # (num_global_modes,)
+            cluster_id = int(kmeans.predict(q_global_snapshot.reshape(1, -1))[0])
+
+            ref_idx = refs_indices[cluster_id]
+            u_ref = u_refs[cluster_id]
+
+            if (ref_idx is None) or (u_ref is None):
+                # Fallback: identity mapping (no Lie transform)
+                print(f"[Lie PROM] Warning: cluster {cluster_id} has no reference. "
+                    f"Copying previous state.")
+                U[:, nstep + 1] = U_prev
+                g_hist[nstep + 1, :] = g_hist[nstep, :]
+                continue
+
+            # ---------- 2) Initial guess for g = (α, β, s, γ, κ) ----------
+            alpha0, beta0 = alpha_beta_ls(u_ref, U_prev)   # amplitude + offset
+            s0     = 1.0
+            gamma0 = 0.0
+            kappa0 = 0.0
+
+            g = np.array([alpha0, beta0, s0, gamma0, kappa0], dtype=float)
+
+            # ---------- 3) Newton iterations in Lie parameter space ----------
+            err = 1.0
+            it  = 0
+
+            while (err > tol_newton) and (it < max_newton):
+                # 3.1) Reconstruct state and tangent
+                U0, D = lie_state_and_tangent(g, u_ref, x, N)
+                # Force type to float64
+                U0 = U0.astype(float)
+
+                # 3.2) Assemble FOM at current guess U0
+                C = self.compute_convection_matrix(U0)
+                S_supg = self.compute_supg_term(U0, mu2)
+                F = self.compute_forcing_vector(mu2)
+
+                A = M + At * (C + E * K)
+
+                # Apply Dirichlet BC on row 'dir_row'
+                A = A.tolil()
+                A[dir_row, :] = 0.0
+                A[dir_row, dir_row] = 1.0
+                A = A.tocsc()
+
+                b = M @ U_prev + At * (F - S_supg)
+                b[dir_row] = mu1
+
+                # Physics residual
+                R = A @ U0 - b
+
+                # 3.3) Reduced system in Lie parameters
+                proj = projection.lower()
+                if proj == "lspg":
+                    # J_g ≈ A D
+                    Jg = A @ D
+                    Ar = Jg.T @ Jg
+                    br = Jg.T @ R
+                elif proj == "galerkin":
+                    # Galerkin in Lie tangent basis: D^T R ≈ 0
+                    Ar = D.T @ (A @ D)
+                    br = D.T @ R
+                else:
+                    raise ValueError("projection must be 'LSPG' or 'Galerkin'.")
+
+                # Solve for parameter increment
+                try:
+                    delta_g = np.linalg.solve(Ar, -br)
+                except np.linalg.LinAlgError:
+                    print(f"[Lie PROM] Warning: singular Ar at step {nstep}, it={it}. "
+                        f"Stopping Newton.")
+                    break
+
+                # 3.4) Update and clamp shape parameters
+                g_new = g + delta_g
+
+                # clamp s, gamma, kappa
+                g_new[2] = np.clip(g_new[2], S_MIN, S_MAX)
+                g_new[3] = np.clip(g_new[3], G_MIN, G_MAX)
+                g_new[4] = np.clip(
+                    g_new[4],
+                    K_MIN_FRAC * N,
+                    K_MAX_FRAC * N
+                )
+
+                norm_g_new = np.linalg.norm(g_new)
+                err = (np.linalg.norm(delta_g) /
+                    (norm_g_new if norm_g_new > 0.0 else 1.0))
+
+                print(
+                    f"    Newton it={it:2d}, ||δg||/||g|| = {err:.3e}, "
+                    f"g = [α={g_new[0]:.3f}, β={g_new[1]:.3f}, "
+                    f"s={g_new[2]:.3f}, γ={g_new[3]:.3f}, κ={g_new[4]:.3f}]"
+                )
+
+                g = g_new
+                it += 1
+
+            # ---------- 4) Final state for this time step ----------
+            U_next, _ = lie_state_and_tangent(g, u_ref, x, N)
+            U[:, nstep + 1] = U_next
+            g_hist[nstep + 1, :] = g
+
+        return U, g_hist
+

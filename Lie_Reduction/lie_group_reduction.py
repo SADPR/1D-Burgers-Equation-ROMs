@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 # Lie-group reduction (non-intrusive) over ALL .npy snapshot files in a folder.
 # Live timing prints per snapshot: total Δt, dilation, coarse, refine.
-# Fits, for each snapshot column (across all files):
+# For each snapshot column (across all files), fit:
 #   - translation (integer shift; periodic or clamped)
 #   - optional dilation s (width change)
 #   - closed-form α, β (intensity rescale/offset)
 # against the best template chosen from a bank sampled across ALL files.
+#
+# Uses CLOSED-FORM SSD for the residual (faster than building vectors + norm).
 #
 # Saves lie_params.npz with everything needed for reconstruction:
 #   x, periodic, files, shapes_per_file, S_shape
@@ -56,11 +58,14 @@ def to_global_col(fi, jl): return int(col_offsets[fi] + jl)
 # ---------- 1D grid for dilation interpolation ----------
 x = np.linspace(0.0, 1.0, N, endpoint=False)
 
-def shift_periodic(u, k): return np.roll(u, int(k))
+def shift_periodic(u, k): 
+    return np.roll(u, int(k))
 
+# Clamped shift that duplicates edge value (matches your current behavior)
 def shift_clamped(u, k):
     k = int(k)
-    if k == 0: return u.copy()
+    if k == 0: 
+        return u.copy()
     w = np.empty_like(u)
     if k > 0:
         w[:k] = u[0];  w[k:] = u[:-k]
@@ -68,6 +73,19 @@ def shift_clamped(u, k):
         k = -k
         w[-k:] = u[-1];  w[:-k] = u[k:]
     return w
+
+# --- Alternative clamped shift with ZERO fill (uncomment to use if BCs ~ 0) ---
+# def shift_clamped(u, k):
+#     k = int(k)
+#     if k == 0: 
+#         return u.copy()
+#     w = np.empty_like(u)
+#     if k > 0:
+#         w[:k] = 0.0;  w[k:] = u[:-k]
+#     else:
+#         k = -k
+#         w[-k:] = 0.0; w[:-k] = u[k:]
+#     return w
 
 def shift_op(u, k):
     return shift_periodic(u, k) if PERIODIC else shift_clamped(u, k)
@@ -93,21 +111,29 @@ def dilate(u, s):
         w  = z - i0
         return (1 - w) * u[i0] + w * u[i1]
 
-def best_alpha_beta(u_cand, y):
-    # Solve min_{α,β} || α u_cand + β 1 - y ||_2^2
-    a = float(u_cand @ u_cand)
-    b = float(u_cand.sum())
-    c = float(y.size)
-    d = float(u_cand @ y)
-    e = float(y.sum())
+# ---------- closed-form (α, β, SSD_min) given candidate u and target y ----------
+# For each candidate u (after dilation+shift), we compute:
+#   a = u·u, b = sum(u), d = u·y
+# Precompute once per snapshot: c = N, e = sum(y), yy = y·y
+# Then:
+#   det   = a*c - b^2
+#   α     = (d*c - b*e)/det
+#   β     = (-d*b + a*e)/det
+#   SSDmin= yy - (c*d^2 - 2*b*d*e + a*e^2)/det
+def alpha_beta_ssdmin(u, y, c, e, yy):
+    a = float(u @ u)
+    b = float(u.sum())
+    d = float(u @ y)
     det = a * c - b * b
     if abs(det) < 1e-14:
         alpha = d / (a + 1e-14)
         beta  = 0.0
+        ssd   = 1e300  # mark as bad
     else:
         alpha = (d * c - b * e) / det
         beta  = (-d * b + a * e) / det
-    return alpha, beta
+        ssd   = yy - (c * d * d - 2.0 * b * d * e + a * e * e) / det
+    return alpha, beta, ssd
 
 # ---------- template bank across all files ----------
 tpl_pairs = []  # list of (file_idx, local_col)
@@ -142,8 +168,14 @@ betas   = np.zeros(Ns, dtype=float)
 for k in range(Ns):
     t_snap0 = time.perf_counter()
     y = S[:, k]
+
+    # Precompute snapshot invariants for closed-form SSD
+    c  = float(N)
+    e  = float(y.sum())
+    yy = float(y @ y)
+
     best_err = np.inf
-    best = None   # (tpl_i, shift, s, a, b)
+    best = None   # (tpl_i, shift, s, alpha, beta)
 
     # timers per snapshot
     t_dilate = 0.0
@@ -162,27 +194,27 @@ for k in range(Ns):
             best_local = None
             for sh in coarse_shifts:
                 cand = shift_op(u_rs, sh)
-                a, b = best_alpha_beta(cand, y)
-                err = np.linalg.norm(a * cand + b - y)
+                a_, b_, err = alpha_beta_ssdmin(cand, y, c, e, yy)
                 if err < best_local_err:
                     best_local_err = err
-                    best_local = (sh, a, b)
+                    best_local = (sh, a_, b_)
             t_coarse += time.perf_counter() - t0
 
             # local refine around best coarse shift
             sh0, a0, b0 = best_local
             win = np.arange(sh0 - COARSE + 1, sh0 + COARSE)
-            if PERIODIC: win = win % N
-            else:        win = win[(win >= 0) & (win < N)]
+            if PERIODIC: 
+                win = win % N
+            else:        
+                win = win[(win >= 0) & (win < N)]
 
             t0 = time.perf_counter()
             for sh in win:
                 cand = shift_op(u_rs, sh)
-                a, b = best_alpha_beta(cand, y)
-                err = np.linalg.norm(a * cand + b - y)
+                a_, b_, err = alpha_beta_ssdmin(cand, y, c, e, yy)
                 if err < best_err:
                     best_err = err
-                    best = (i_tpl, sh, s, a, b)
+                    best = (i_tpl, sh, s, a_, b_)
             t_refine += time.perf_counter() - t0
 
     # store best
@@ -202,7 +234,7 @@ for k in range(Ns):
             f"[{k+1:5d}/{Ns}] tpl=({files[fi]}, col {jl:4d}) | "
             f"Δt: {t_snap:6.2f}s  "
             f"dil: {t_dilate:5.2f}s  coarse: {t_coarse:5.2f}s  refine: {t_refine:5.2f}s  "
-            f"s={s:.3f} α={a:.3f} β={b:.3f}  err={best_err:.3e}"
+            f"s={s:.3f} α={a:.3f} β={b:.3f}  ssd={best_err:.3e}"
         )
 
 # ---------- save everything needed for reconstruction ----------
@@ -214,6 +246,7 @@ meta = dict(
     tpl_stride=TPL_STRIDE,
     tpl_max=TPL_MAX,
     file_regex=FILE_REGEX,
+    note="closed-form SSD evaluator (faster than explicit residual norm)"
 )
 
 np.savez(

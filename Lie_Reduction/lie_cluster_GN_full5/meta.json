@@ -1,0 +1,12 @@
+{
+  "DATA_FILE": "../FEM/fem_testing_data/fem_simulation_mu1_4.750_mu2_0.0200.npy",
+  "N": 512,
+  "Nt": 501,
+  "N_CLUSTERS": 4,
+  "R_POD": 5,
+  "U_global_shape": [
+    512,
+    5
+  ],
+  "note": "Lie PROM offline artifacts (no GN fits stored here)."
+}
